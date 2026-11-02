@@ -662,6 +662,30 @@ public class DhInternalServerGenerator
 	#endif
 	{
 		#if MC_VER <= MC_1_12_2
+		// chunks that already have an LOD stop being ignored when they are released,
+		// so changes the population made to them reach the LOD through their unload save.
+		// looked up here so the server thread doesn't wait on the DB.
+		HashSet<DhChunkPos> chunkPosWithLodSet = new HashSet<>();
+		try
+		{
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				for (int dz = -1; dz <= 1; dz++)
+				{
+					DhChunkPos neighborDhPos = new DhChunkPos(chunkPos.x + dx, chunkPos.z + dz);
+					if (this.dhServerLevel.getChunkHash(neighborDhPos) != 0)
+					{
+						chunkPosWithLodSet.add(neighborDhPos);
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// the chunks still have to be released, they just stay ignored for a while like before
+			LOGGER.warn("Failed to get chunk hashes around ["+chunkPos+"], error: ["+e.getMessage()+"]", e);
+		}
+		
 		return ServerThreadTaskHandler.INSTANCE.queueEssentialTask(() ->
 		{
 			try
@@ -688,6 +712,14 @@ public class DhInternalServerGenerator
 							// another generation event still needs this chunk loaded
 							continue;
 						}
+						
+						// must happen before the unload is queued, MC may save and unload the chunk on its next tick.
+						// the update queue's hash check drops the save if nothing changed.
+						boolean hasLod = chunkPosWithLodSet.contains(neighborDhPos);
+						if (hasLod && this.updateManager != null)
+						{
+							this.updateManager.removePosToIgnore(neighborDhPos);
+						}
 	
 						// in both cases the chunk is only queued for unload here, it's actually
 						// freed by the drain once the whole generation event is done
@@ -712,7 +744,10 @@ public class DhInternalServerGenerator
 						}
 						#endif
 	
-						this.scheduleRemovePosToIgnore(neighborDhPos);
+						if (!hasLod)
+						{
+							this.scheduleRemovePosToIgnore(neighborDhPos);
+						}
 					}
 				}
 			}
