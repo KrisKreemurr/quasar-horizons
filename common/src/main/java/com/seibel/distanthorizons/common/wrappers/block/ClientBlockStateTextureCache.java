@@ -255,24 +255,6 @@ public class ClientBlockStateTextureCache
 			texture, cullDirection, geometry.tinted));
 	}
 	
-	/** API quads use the same geometry as Minecraft's quads */
-	private static QuadGeometry createApiQuadGeometry(DhApiModelQuad apiQuad)
-	{
-		if (!(apiQuad.sprite instanceof TextureAtlasSprite))
-		{
-			throw new ClassCastException("Invalid sprite given, it must be Minecraft's ["+TextureAtlasSprite.class.getName()+"].");
-		}
-		
-		QuadGeometry geometry = new QuadGeometry();
-		geometry.sprite = (TextureAtlasSprite) apiQuad.sprite;
-		System.arraycopy(apiQuad.xByCorner, 0, geometry.xByVertex, 0, 4);
-		System.arraycopy(apiQuad.yByCorner, 0, geometry.yByVertex, 0, 4);
-		System.arraycopy(apiQuad.zByCorner, 0, geometry.zByVertex, 0, 4);
-		System.arraycopy(apiQuad.uByCorner, 0, geometry.spriteUByVertex, 0, 4);
-		System.arraycopy(apiQuad.vByCorner, 0, geometry.spriteVByVertex, 0, 4);
-		return geometry;
-	}
-	
 	/** Quads on textures bigger than a tile */
 	private static boolean needsOwnTile(QuadGeometry geometry)
 	{
@@ -374,7 +356,11 @@ public class ClientBlockStateTextureCache
 				for (DhApiModelQuad apiQuad : eventParam.getAddedQuads())
 				{
 					EDhDirection cullDirection = (apiQuad.cullDirection != null) ? EDhDirection.fromApiVersion(apiQuad.cullDirection) : null;
-					addModelQuad(createApiQuadGeometry(apiQuad), cullDirection, modelQuads, textureBySprite);
+					BlockFaceTexture texture = BlockFaceTexture.createTexture(TEXTURE_WIDTH_AND_HEIGHT, TEXTURE_WIDTH_AND_HEIGHT, apiQuad.argbPixels);
+					modelQuads.add(new BlockModelQuad(
+						apiQuad.xByCorner, apiQuad.yByCorner, apiQuad.zByCorner,
+						apiQuad.uByCorner, apiQuad.vByCorner,
+						texture, cullDirection, false));
 				}
 			}
 		}
