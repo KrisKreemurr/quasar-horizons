@@ -656,13 +656,17 @@ public class ChunkWrapper implements IChunkWrapper
 	 * convert it to an LOD. <br><br>
 	 * 
 	 * This method is only necessary for 1.7.10 since we handle
-	 * this logic in the save mixin for newer MC versions.
+	 * this logic in the save mixin for newer MC versions. <br><br>
+	 *
+	 * MC's light isn't required, DH bakes its own block lighting.
+	 * MC only marks the light as populated when the chunk is ticked,
+	 * which chunks DH loads for world gen aren't necessarily,
+	 * so blocks other chunks' population places into them could never reach the LODs.
 	 */
 	public static boolean canSaveChunk(Chunk chunk)
 	{
 		return chunk != null
-			&& chunk.isTerrainPopulated
-			&& chunk.isLightPopulated;
+			&& chunk.isTerrainPopulated;
 	}
 	#endif
 	
