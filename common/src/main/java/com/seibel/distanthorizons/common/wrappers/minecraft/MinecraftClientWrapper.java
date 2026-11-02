@@ -30,6 +30,7 @@ import com.seibel.distanthorizons.common.wrappers.world.ClientLevelWrapper;
 import com.seibel.distanthorizons.common.wrappers.world.ServerLevelWrapper;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.file.structure.ClientOnlySaveStructure;
+import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPosMutable;
 import com.seibel.distanthorizons.core.render.RenderThreadTaskHandler;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IImmersivePortalsAccessor;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.IClientLevelWrapper;
@@ -338,12 +339,8 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
         #endif
 	}
 	
-	/** 
-	 * packs chunk x (high 32 bits) and z (low 32 bits)
-	 * Goal is to not allocate new objects
-	 */
 	@Override
-	public long getPlayerChunkPosPacked()
+	public void getPlayerBlockPosMutable(DhBlockPosMutable playerBlockPos)
 	{
 		#if MC_VER <= MC_1_12_2
 		EntityPlayerSP player = this.getPlayer();
@@ -352,25 +349,37 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 		#endif
 		if (player == null)
 		{
-			return 0L;
+			playerBlockPos.setX(0);
+			playerBlockPos.setY(0);
+			playerBlockPos.setZ(0);
+			return;
 		}
 		
 		if (DelayedAccessors.IMMERSIVE_PORTALS != null)
 		{
-			DhChunkPos pos = DelayedAccessors.IMMERSIVE_PORTALS.getActualPlayerChunkPos();
+			DhBlockPos pos = DelayedAccessors.IMMERSIVE_PORTALS.getActualPlayerBlockPos();
 			if (pos != null)
 			{
-				return BitShiftUtil.packInts(pos.getX(), pos.getZ());
+				playerBlockPos.setX(pos.getX());
+				playerBlockPos.setY(pos.getY());
+				playerBlockPos.setZ(pos.getZ());
+				return;
 			}
 		}
 	
 		#if MC_VER <= MC_1_12_2
-		return BitShiftUtil.packInts(player.chunkCoordX, player.chunkCoordZ);
+		playerBlockPos.setX((int) Math.floor(player.posX));
+		playerBlockPos.setY((int) Math.floor(player.posY));
+		playerBlockPos.setZ((int) Math.floor(player.posZ));
 		#elif MC_VER < MC_1_17_1
 		BlockPos blockPos = player.blockPosition();
-		return BitShiftUtil.packInts(blockPos.getX() >> 4, blockPos.getZ() >> 4);
+		playerBlockPos.setX(blockPos.getX());
+		playerBlockPos.setY(blockPos.getY());
+		playerBlockPos.setZ(blockPos.getZ());
 		#else
-		return BitShiftUtil.packInts(player.getBlockX() >> 4, player.getBlockZ() >> 4);
+		playerBlockPos.setX(player.getBlockX());
+		playerBlockPos.setY(player.getBlockY());
+		playerBlockPos.setZ(player.getBlockZ());
 		#endif
 	}
 	
