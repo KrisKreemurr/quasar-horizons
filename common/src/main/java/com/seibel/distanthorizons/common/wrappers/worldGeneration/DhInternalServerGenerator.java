@@ -282,6 +282,7 @@ public class DhInternalServerGenerator
 		this.runValidation();
 		
 		ArrayList<CompletableFuture<ChunkWrapper>> getChunkFutureList = new ArrayList<>();
+		ArrayList<IChunkWrapper> chunkWrappers = new ArrayList<>();
 		try
 		{
 			//=====================//
@@ -341,37 +342,14 @@ public class DhInternalServerGenerator
 			// but will also prevent over-queuing world gen tasks.
 			// If C2ME is present the CPU will still be well utilized.
 			
-			ArrayList<IChunkWrapper> chunkWrappers = new ArrayList<>();
 			for (int i = 0; i < getChunkFutureList.size(); i++)
 			{
 				CompletableFuture<ChunkWrapper> getChunkFuture = getChunkFutureList.get(i);
 				ChunkWrapper chunkWrapper = getChunkFuture.join();
 				if (chunkWrapper != null)
 				{
-					chunkWrapper.createDhHeightMaps();
 					chunkWrappers.add(chunkWrapper);
 				}
-			}
-			
-			
-			
-			//==========================//
-			// process generated chunks //
-			//==========================//
-			
-			int maxSkyLight = this.dhServerLevel.getServerLevelWrapper().hasSkyLight() ? LodUtil.MAX_MC_LIGHT : LodUtil.MIN_MC_LIGHT;
-			for (int i = 0; i < chunkWrappers.size(); i++)
-			{
-				ChunkWrapper chunkWrapper = (ChunkWrapper)chunkWrappers.get(i);
-				
-				// pre-generated chunks should have lighting but new ones won't
-				if (!chunkWrapper.isDhBlockLightingCorrect())
-				{
-					DhLightingEngine.INSTANCE.bakeChunkBlockLighting(chunkWrapper, chunkWrappers, maxSkyLight);
-				}
-				
-				this.dhServerLevel.updateBeaconBeamsForChunk(chunkWrapper, chunkWrappers);
-				genEvent.resultConsumer.accept(chunkWrapper);
 			}
 		}
 		finally
@@ -448,6 +426,34 @@ public class DhInternalServerGenerator
 			});
 			this.joinServerCleanupFuture(tickFuture);
 			#endif
+		}
+		
+		
+		
+		//==========================//
+		// process generated chunks //
+		//==========================//
+		
+		// Only done once the chunks are released:
+		// until then other generation events can still populate their neighbors and place blocks into these chunks.
+		// Height maps created before that would be outdated, the LODs would miss those blocks (IE cut off tree crowns).
+		int maxSkyLight = this.dhServerLevel.getServerLevelWrapper().hasSkyLight() ? LodUtil.MAX_MC_LIGHT : LodUtil.MIN_MC_LIGHT;
+		for (int i = 0; i < chunkWrappers.size(); i++)
+		{
+			((ChunkWrapper) chunkWrappers.get(i)).createDhHeightMaps();
+		}
+		for (int i = 0; i < chunkWrappers.size(); i++)
+		{
+			ChunkWrapper chunkWrapper = (ChunkWrapper)chunkWrappers.get(i);
+			
+			// pre-generated chunks should have lighting but new ones won't
+			if (!chunkWrapper.isDhBlockLightingCorrect())
+			{
+				DhLightingEngine.INSTANCE.bakeChunkBlockLighting(chunkWrapper, chunkWrappers, maxSkyLight);
+			}
+			
+			this.dhServerLevel.updateBeaconBeamsForChunk(chunkWrapper, chunkWrappers);
+			genEvent.resultConsumer.accept(chunkWrapper);
 		}
 	}
 	private void joinServerCleanupFuture(CompletableFuture<Void> future)
