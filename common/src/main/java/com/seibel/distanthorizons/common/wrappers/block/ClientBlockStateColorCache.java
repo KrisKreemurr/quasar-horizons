@@ -51,7 +51,6 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.block.BlockRotatedPillar;
 import net.minecraft.block.*;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.color.BlockColors;
@@ -376,14 +375,7 @@ public class ClientBlockStateColorCache
 						&& !quads.isEmpty()
 						// for rotated blocks (ie logs) we want the side instead of the top,
 						// so logs use their bark side instead of their cut/inner side
-						&& !(
-							#if MC_VER <= MC_1_12_2
-							this.blockState.getBlock() instanceof BlockRotatedPillar
-							#else
-							this.blockState.getBlock() instanceof RotatedPillarBlock
-							#endif
-							&& direction == EDhDirection.UP
-							)
+						&& !(this.blockStateWrapper.isRotatedPillar() && direction == EDhDirection.UP)
 						)
 					{
 						break;
