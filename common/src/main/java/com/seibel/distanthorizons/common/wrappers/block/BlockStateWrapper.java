@@ -56,6 +56,7 @@ import net.minecraft.world.level.block.BeaconBeamBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 #endif
@@ -1490,6 +1491,21 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		return !this.blockState.getFluidState().isEmpty()
 			&& !(this.blockState.getBlock() instanceof LiquidBlock)
 			&& !this.blockState.is(Blocks.BUBBLE_COLUMN);
+		#endif
+	}
+	
+	@Override
+	public boolean isRotatedPillar()
+	{
+		if (this.blockState == null)
+		{
+			return false;
+		}
+		
+		#if MC_VER <= MC_1_12_2
+		return this.blockState.getBlock() instanceof BlockRotatedPillar;
+		#else
+		return this.blockState.getBlock() instanceof RotatedPillarBlock;
 		#endif
 	}
 	
