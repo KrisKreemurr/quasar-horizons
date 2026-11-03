@@ -537,9 +537,11 @@ public class DhInternalServerGenerator
 			
 			// Ignore chunk update events for this position.
 			// Would be added by the loop later, but also here instead of the main server thread.
+			// Updates queued before are dropped, they could overwrite the LOD this event builds with outdated height maps.
 			if (this.updateManager != null)
 			{
 				this.updateManager.addPosToIgnore(McObjectConverter.convert(chunkPos));
+				this.updateManager.invalidatePendingUpdate(McObjectConverter.convert(chunkPos));
 			}
 			
 			return ServerThreadTaskHandler.INSTANCE.queueTask(() ->
@@ -613,10 +615,12 @@ public class DhInternalServerGenerator
 			{
 				ServerLevel level = this.params.mcServerLevel;
 				
-				// ignore chunk update events for this position
+				// ignore chunk update events for this position,
+				// updates queued before are dropped since they could overwrite the LOD this event builds
 				if (this.updateManager != null)
 				{
 					this.updateManager.addPosToIgnore(McObjectConverter.convert(chunkPos));
+					this.updateManager.invalidatePendingUpdate(McObjectConverter.convert(chunkPos));
 				}
 				
 				#if MC_VER < MC_1_21_5
