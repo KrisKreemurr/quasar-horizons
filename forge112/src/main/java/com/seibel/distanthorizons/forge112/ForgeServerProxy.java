@@ -128,8 +128,9 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 	@SubscribeEvent
 	public void serverChunkSaveEvent(ChunkDataEvent.Save event)
 	{
-		if (event.getWorld() instanceof WorldServer
-			&& event.getChunk().dirty)
+		// not limited to dirty chunks: an earlier save of the changes may have been ignored while DH generated the area,
+		// which already cleared the dirty flag. Unchanged chunks are skipped by the update queue's hash check.
+		if (event.getWorld() instanceof WorldServer)
 		{
 			WorldServer worldServer = (WorldServer) event.getWorld();
 			MixinChunkMapCommon.onChunkSave(worldServer, event.getChunk());
