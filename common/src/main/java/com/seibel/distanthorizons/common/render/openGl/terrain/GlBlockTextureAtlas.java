@@ -21,7 +21,7 @@ package com.seibel.distanthorizons.common.render.openGl.terrain;
 
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.IDhApiBlockTextureAtlas;
 import com.seibel.distanthorizons.common.wrappers.minecraft.MinecraftGLWrapper;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.coreapi.util.TextureUtil;
 import com.seibel.distanthorizons.lwjgl.GL12;
 import org.lwjgl.opengl.GL11;
@@ -32,13 +32,13 @@ import java.nio.ByteBuffer;
 import static com.seibel.distanthorizons.lwjgl.LWJGLServiceProvider.LWJGL;
 
 /**
- * The GPU side of the {@link BlockTextureRegistry},
+ * The GPU side of the {@link BlockRenderRegistry},
  * a texture array with one layer per block face tile. <br><br>
  *
- * Layer {@link BlockTextureRegistry#UNTEXTURED_ID} is a uniform 1.0 color multiplier
+ * Layer {@link BlockRenderRegistry#UNTEXTURED_ID} is a uniform 1.0 color multiplier
  * so vertices without a texture render exactly like flat-colored LODs.
  *
- * @see BlockTextureRegistry
+ * @see BlockRenderRegistry
  */
 public class GlBlockTextureAtlas implements IDhApiBlockTextureAtlas
 {

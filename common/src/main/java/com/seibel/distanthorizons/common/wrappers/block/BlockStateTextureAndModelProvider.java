@@ -22,18 +22,18 @@ package com.seibel.distanthorizons.common.wrappers.block;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockModelQuad;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
-import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateFaceTextureProvider;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateTextureAndModelProvider;
 import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateWrapper;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Exposes {@link ClientBlockStateTextureCache} to DH core.
  *
- * @see IBlockStateFaceTextureProvider
+ * @see IBlockStateTextureAndModelProvider
  */
-public class BlockStateTextureProvider implements IBlockStateFaceTextureProvider
+public class BlockStateTextureAndModelProvider implements IBlockStateTextureAndModelProvider
 {
-	public static final BlockStateTextureProvider INSTANCE = new BlockStateTextureProvider();
+	public static final BlockStateTextureAndModelProvider INSTANCE = new BlockStateTextureAndModelProvider();
 	
 	
 	

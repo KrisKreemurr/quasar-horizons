@@ -29,7 +29,7 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTe
 import com.seibel.distanthorizons.api.objects.render.DhApiModelQuad;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockModelQuad;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
@@ -81,7 +81,7 @@ import org.joml.Vector3fc;
  *
  * @see ClientBlockStateColorCache
  * @see BlockFaceTexture
- * @see BlockTextureRegistry
+ * @see BlockRenderRegistry
  */
 public class ClientBlockStateTextureCache
 {
