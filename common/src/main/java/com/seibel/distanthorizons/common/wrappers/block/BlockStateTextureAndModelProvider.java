@@ -20,7 +20,7 @@
 package com.seibel.distanthorizons.common.wrappers.block;
 
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockModelQuad;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.DhBlockModelQuad;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateTextureAndModelProvider;
 import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateWrapper;
@@ -50,7 +50,7 @@ public class BlockStateTextureAndModelProvider implements IBlockStateTextureAndM
 	}
 	
 	@Override
-	public BlockModelQuad[] getModel(IBlockStateWrapper blockState)
+	public DhBlockModelQuad[] getModel(IBlockStateWrapper blockState)
 	{
 		if (!(blockState instanceof BlockStateWrapper))
 		{

@@ -28,8 +28,8 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockMo
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTextureOverrideEvent;
 import com.seibel.distanthorizons.api.objects.render.DhApiModelQuad;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockModelQuad;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.DhBlockModelQuad;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
@@ -125,7 +125,7 @@ public class ClientBlockStateTextureCache
 	private static final ReentrantLock BAKE_LOCK = new ReentrantLock();
 	
 	private static final ConcurrentHashMap<BlockStateWrapper, BlockFaceTexture[]> TEXTURES_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
-	private static final ConcurrentHashMap<BlockStateWrapper, BlockModelQuad[]> MODELS_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<BlockStateWrapper, DhBlockModelQuad[]> MODELS_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
 	
 	/** 
 	 * can be enabled to make sure the textures are being parsed
@@ -153,7 +153,7 @@ public class ClientBlockStateTextureCache
 		return faceTextures[direction.faceIndex];
 	}
 	
-	public static BlockModelQuad[] getModel(BlockStateWrapper blockStateWrapper)
+	public static DhBlockModelQuad[] getModel(BlockStateWrapper blockStateWrapper)
 	{ return MODELS_BY_BLOCK_WRAPPER.computeIfAbsent(blockStateWrapper, ClientBlockStateTextureCache::bakeModel); }
 	
 	/** Faces without quads on their side use the unculled ones */
@@ -215,7 +215,7 @@ public class ClientBlockStateTextureCache
 	#if MC_VER > MC_1_7_10
 	private static void addModelQuads(
 		BlockStateWrapper blockStateWrapper, @Nullable EDhDirection cullDirection,
-		ArrayList<BlockModelQuad> modelQuads, HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite) throws Exception
+		ArrayList<DhBlockModelQuad> modelQuads, HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite) throws Exception
 	{
 		List<BakedQuad> bakedQuads = QuadWrapper.getQuadsForDirection(blockStateWrapper.blockState, cullDirection);
 		if (bakedQuads == null)
@@ -231,7 +231,7 @@ public class ClientBlockStateTextureCache
 	
 	private static void addModelQuad(
 		QuadGeometry geometry, @Nullable EDhDirection cullDirection,
-		ArrayList<BlockModelQuad> modelQuads, HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite)
+		ArrayList<DhBlockModelQuad> modelQuads, HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite)
 	{
 		float[] uByVertex = geometry.spriteUByVertex;
 		float[] vByVertex = geometry.spriteVByVertex;
@@ -249,7 +249,7 @@ public class ClientBlockStateTextureCache
 			texture = textureBySprite.computeIfAbsent(geometry.sprite, ClientBlockStateTextureCache::bakeSpriteTexture);
 		}
 		
-		modelQuads.add(new BlockModelQuad(
+		modelQuads.add(new DhBlockModelQuad(
 			geometry.xByVertex, geometry.yByVertex, geometry.zByVertex,
 			uByVertex, vByVertex,
 			texture, cullDirection, geometry.tinted));
@@ -296,16 +296,16 @@ public class ClientBlockStateTextureCache
 	}
 	#endif
 	
-	private static BlockModelQuad[] bakeModel(BlockStateWrapper blockStateWrapper)
+	private static DhBlockModelQuad[] bakeModel(BlockStateWrapper blockStateWrapper)
 	{
 		#if MC_VER <= MC_1_7_10
 		// 1.7.10 doesn't have baked quads
-		return new BlockModelQuad[0];
+		return new DhBlockModelQuad[0];
 		#else
 		if (BlockStateWrapper.isAir(blockStateWrapper.blockState)
 			|| blockStateWrapper.isLiquid())
 		{
-			return new BlockModelQuad[0];
+			return new DhBlockModelQuad[0];
 		}
 		
 		// API users can replace or add to the model
@@ -316,7 +316,7 @@ public class ClientBlockStateTextureCache
 			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBlockModelOverrideEvent.class, eventParam);
 		}
 		
-		ArrayList<BlockModelQuad> modelQuads = new ArrayList<>();
+		ArrayList<DhBlockModelQuad> modelQuads = new ArrayList<>();
 		HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite = new HashMap<>();
 		try
 		{
@@ -357,7 +357,7 @@ public class ClientBlockStateTextureCache
 				{
 					EDhDirection cullDirection = (apiQuad.cullDirection != null) ? EDhDirection.fromApiVersion(apiQuad.cullDirection) : null;
 					BlockFaceTexture texture = BlockFaceTexture.createTexture(TEXTURE_WIDTH_AND_HEIGHT, TEXTURE_WIDTH_AND_HEIGHT, apiQuad.argbPixels);
-					modelQuads.add(new BlockModelQuad(
+					modelQuads.add(new DhBlockModelQuad(
 						apiQuad.xByCorner, apiQuad.yByCorner, apiQuad.zByCorner,
 						apiQuad.uByCorner, apiQuad.vByCorner,
 						texture, cullDirection, false));
@@ -374,7 +374,7 @@ public class ClientBlockStateTextureCache
 			BAKE_LOCK.unlock();
 		}
 		
-		return modelQuads.toArray(new BlockModelQuad[0]);
+		return modelQuads.toArray(new DhBlockModelQuad[0]);
 		#endif
 	}
 	
