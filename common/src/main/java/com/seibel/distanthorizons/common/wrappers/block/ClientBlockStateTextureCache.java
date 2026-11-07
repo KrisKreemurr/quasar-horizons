@@ -271,14 +271,14 @@ public class ClientBlockStateTextureCache
 		int spriteHeight = TextureAtlasSpriteWrapper.getHeight(geometry.sprite);
 		
 		int[] pixels = new int[TEXTURE_WIDTH_AND_HEIGHT * TEXTURE_WIDTH_AND_HEIGHT];
-		for (int u = 0; u < TEXTURE_WIDTH_AND_HEIGHT; u++)
+		for (int pixelX = 0; pixelX < TEXTURE_WIDTH_AND_HEIGHT; pixelX++)
 		{
-			for (int v = 0; v < TEXTURE_WIDTH_AND_HEIGHT; v++)
+			for (int pixelY = 0; pixelY < TEXTURE_WIDTH_AND_HEIGHT; pixelY++)
 			{
 				// this pixel's spot on the quad, blended from the corners
-				float s = (u + 0.5f) / TEXTURE_WIDTH_AND_HEIGHT;
-				float t = (v + 0.5f) / TEXTURE_WIDTH_AND_HEIGHT;
-				float[] cornerWeights = { (1 - s) * (1 - t), (1 - s) * t, s * t, s * (1 - t) };
+				float quadU = (pixelX + 0.5f) / TEXTURE_WIDTH_AND_HEIGHT;
+				float quadV = (pixelY + 0.5f) / TEXTURE_WIDTH_AND_HEIGHT;
+				float[] cornerWeights = { (1 - quadU) * (1 - quadV), (1 - quadU) * quadV, quadU * quadV, quadU * (1 - quadV) };
 				float spriteU = 0;
 				float spriteV = 0;
 				for (int i = 0; i < 4; i++)
@@ -289,7 +289,7 @@ public class ClientBlockStateTextureCache
 				
 				int texelX = MathUtil.clamp(0, (int) (spriteU * spriteWidth), spriteWidth - 1);
 				int texelY = MathUtil.clamp(0, (int) (spriteV * spriteHeight), spriteHeight - 1);
-				pixels[TextureUtil.getPixelIndex(u, v)] = TextureAtlasSpriteWrapper.getPixelARGB(geometry.sprite, 0, texelX, texelY);
+				pixels[TextureUtil.getPixelIndex(pixelX, pixelY)] = TextureAtlasSpriteWrapper.getPixelARGB(geometry.sprite, 0, texelX, texelY);
 			}
 		}
 		return BlockFaceTexture.createTexture(TEXTURE_WIDTH_AND_HEIGHT, TEXTURE_WIDTH_AND_HEIGHT, pixels);
