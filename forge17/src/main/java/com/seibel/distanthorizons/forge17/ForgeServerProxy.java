@@ -119,7 +119,7 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 		ILevelWrapper levelWrapper = ProxyUtil.getLevelWrapper(GetEventLevel(event));
 		ChunkWrapper chunkWrapper = new ChunkWrapper(chunk, levelWrapper);
 		// Only handle event if chunk is ready, otherwise drop the update - we'll get it later during save
-		if (!chunk.isTerrainPopulated || !chunk.isLightPopulated)
+		if (!ChunkWrapper.canSaveChunk(chunk))
 	    {
 			return;
 		}
