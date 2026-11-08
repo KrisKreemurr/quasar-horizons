@@ -6,7 +6,7 @@ public class BlazeDhVertexFormatUtil {}
 #else
 
 import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodQuadBuilder;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
@@ -51,7 +51,7 @@ public class BlazeDhVertexFormatUtil
 	@NotNull public static final VertexFormatElement RGBA_UBYTE_COLOR;
 	@NotNull public static final VertexFormatElement IRIS_MATERIAL;
 	@NotNull public static final VertexFormatElement IRIS_NORMAL;
-	/** {@link BlockTextureRegistry} tile id, 0 = flat color */
+	/** {@link BlockRenderRegistry} tile id, 0 = flat color */
 	@NotNull public static final VertexFormatElement TEXTURE_TILE;
 	
 	@NotNull public static final VertexFormatElement FLOAT_XYZ_POS;

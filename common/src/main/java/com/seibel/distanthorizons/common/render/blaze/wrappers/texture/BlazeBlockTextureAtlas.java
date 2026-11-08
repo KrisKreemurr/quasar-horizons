@@ -24,7 +24,7 @@ public class BlazeBlockTextureAtlas {}
 
 #else
 
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.render.AbstractBlockTextureAtlas;
 import com.seibel.distanthorizons.core.util.objects.pooling.PhantomArrayList.PhantomArrayListCheckout;
 import com.seibel.distanthorizons.core.util.objects.pooling.PhantomArrayList.PhantomArrayListPool;
@@ -44,7 +44,7 @@ import java.nio.ByteBuffer;
  * The fragment shader locates a tile via its id and the texture's size,
  * so no extra uniforms are needed.
  *
- * @see BlockTextureRegistry
+ * @see BlockRenderRegistry
  * @see com.seibel.distanthorizons.common.render.openGl.terrain.GlBlockTextureAtlas
  */
 public class BlazeBlockTextureAtlas extends AbstractBlockTextureAtlas
