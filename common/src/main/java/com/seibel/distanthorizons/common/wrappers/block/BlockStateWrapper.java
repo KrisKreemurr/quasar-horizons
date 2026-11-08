@@ -22,8 +22,10 @@ package com.seibel.distanthorizons.common.wrappers.block;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiBlockMaterial;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockStateWrapperCreatedEvent;
 import com.seibel.distanthorizons.common.wrappers.WrapperFactory;
+import com.seibel.distanthorizons.common.wrappers.McObjectConverter;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.config.types.ConfigEntry;
+import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 import com.seibel.distanthorizons.coreapi.util.ColorUtil;
@@ -39,6 +41,8 @@ import net.minecraft.item.ItemDye;
 import cpw.mods.fml.common.registry.GameData;
 import com.seibel.distanthorizons.common.backports.IBlockState;
 import net.minecraftforge.fluids.IFluidBlock;
+import net.minecraftforge.fluids.BlockFluidBase;
+import net.minecraftforge.fluids.BlockFluidFinite;
 import com.seibel.distanthorizons.common.backports.FakeBlockState;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.block.*;
@@ -46,12 +50,18 @@ import net.minecraft.init.Blocks;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.block.properties.IProperty;
 import net.minecraftforge.fluids.IFluidBlock;
+import net.minecraftforge.fluids.BlockFluidBase;
+import net.minecraftforge.fluids.BlockFluidFinite;
 #else
 import net.minecraft.tags.BlockTags;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.BeaconBeamBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.SnowLayerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 #endif
 import com.seibel.distanthorizons.core.logging.DhLogger;
@@ -185,9 +195,13 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	private final boolean useBottomTextureForSides;
 	private final boolean alwaysRasterizeTexture;
 	private final boolean isSolid;
+	private final boolean isFullBlock;
+	/** indexed by {@link EDhDirection#faceIndex} */
+	private final boolean[] isFaceFullByFaceIndex = new boolean[6];
 	private final boolean isLiquid;
 	private final boolean allowApiColorOverride;
 	private final boolean allowApiTextureOverride;
+	private final boolean allowApiModelOverride;
 	/** null if this block can't tint beacons */
 	private final Color beaconTintColor; 
 	private final Color mapColor;
@@ -466,6 +480,17 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			{
 				this.allowApiTextureOverride = false;
 			}
+			
+			// allow overriding if present
+			if (overrideEventParam != null
+				&& overrideEventParam.getAllowApiModelOverride() != null)
+			{
+				this.allowApiModelOverride = overrideEventParam.getAllowApiModelOverride();
+			}
+			else
+			{
+				this.allowApiModelOverride = false;
+			}
 		}
 		
 		
@@ -523,7 +548,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 				if (block instanceof BlockStainedGlass 
 					|| block instanceof BlockStainedGlassPane)
 				{
-					colorInt = ItemDye.dyeColors[BlockColored.func_150032_b(this.blockState.getMeta())];
+					colorInt = ItemDye.field_150922_c[BlockColored.func_150032_b(this.blockState.getMeta())]; // dyeColors
 					beaconTintColor = ColorUtil.toColorObjRGB(colorInt);
 				}
 				#elif MC_VER <= MC_1_12_2
@@ -656,11 +681,59 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			}
 			else
 			{
-	        #if MC_VER < MC_1_20_1
+	        #if MC_VER <= MC_1_7_10
 			this.isSolid = this.blockState.getMaterial().isSolid();
+	        #elif MC_VER <= MC_1_12_2
+			// snow's material isn't solid, from 2 layers it has a collision box
+			this.isSolid = this.blockState.getMaterial().isSolid()
+				|| (this.blockState.getBlock() instanceof BlockSnow && this.blockState.getValue(BlockSnow.LAYERS) > 1);
+	        #elif MC_VER < MC_1_20_1
+			// snow's material isn't solid, from 2 layers it has a collision box
+			this.isSolid = this.blockState.getMaterial().isSolid()
+				|| (this.blockState.getBlock() instanceof SnowLayerBlock && this.blockState.getValue(SnowLayerBlock.LAYERS) > 1);
 	        #else
 			this.isSolid = !this.blockState.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty();
             #endif
+			}
+		}
+		
+		
+		// full block and full faces //
+		{
+			if (this.isAir()
+				|| this.blockState == null)
+			{
+				this.isFullBlock = false;
+			}
+			else
+			{
+				#if MC_VER <= MC_1_7_10
+				// render type 0 blocks can be smaller than a full cube
+				Block block = this.blockState.getBlock();
+				this.isFullBlock = block.getRenderType() == 0
+					&& block.getBlockBoundsMinX() == 0 && block.getBlockBoundsMinY() == 0 && block.getBlockBoundsMinZ() == 0
+					&& block.getBlockBoundsMaxX() == 1 && block.getBlockBoundsMaxY() == 1 && block.getBlockBoundsMaxZ() == 1;
+				#elif MC_VER <= MC_1_12_2
+				this.isFullBlock = this.blockState.isFullCube();
+				#else
+				this.isFullBlock = Block.isShapeFullBlock(this.blockState.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
+				#endif
+				
+				for (EDhDirection direction : EDhDirection.ALL)
+				{
+					#if MC_VER <= MC_1_7_10
+					// these versions can't check a single face without a level
+					this.isFaceFullByFaceIndex[direction.faceIndex] = this.blockState.getBlock().isOpaqueCube();
+					#elif MC_VER <= MC_1_12_2
+					this.isFaceFullByFaceIndex[direction.faceIndex] = this.blockState.isOpaqueCube();
+					#elif MC_VER < MC_1_21_3
+					Direction mcDirection = McObjectConverter.convert(direction);
+					this.isFaceFullByFaceIndex[direction.faceIndex] = Block.isFaceFull(this.blockState.getFaceOcclusionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, mcDirection), mcDirection);
+					#else
+					Direction mcDirection = McObjectConverter.convert(direction);
+					this.isFaceFullByFaceIndex[direction.faceIndex] = Block.isFaceFull(this.blockState.getFaceOcclusionShape(mcDirection), mcDirection);
+					#endif
+				}
 			}
 		}
 		
@@ -1406,13 +1479,100 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	{
 		if (blockState == null)
 		{
-			return 0;
+			return LodUtil.MIN_MC_LIGHT;
 		}
 		
 		#if MC_VER <= MC_1_12_2 
 		return blockState.getLightValue();
 		#else
 		return blockState.getLightEmission();
+		#endif
+	}
+	
+	@Override
+	public int getFluidAmount()
+	{
+		if (this.blockState == null)
+		{
+			return LodUtil.NO_FLUID_AMOUNT;
+		}
+		
+		#if MC_VER <= MC_1_12_2
+		if (!this.isLiquid)
+		{
+			return LodUtil.NO_FLUID_AMOUNT;
+		}
+
+		// vanilla fluids store their level in the meta (the LEVEL property in 1.12.2),
+		// 0 is a source, 1-7 are flowing and 8+ are falling (which renders full)
+		if (this.blockState.getBlock() instanceof BlockLiquid)
+		{
+			#if MC_VER <= MC_1_7_10
+			int level = this.blockState.getMeta();
+			#else
+			int level = this.blockState.getValue(BlockLiquid.LEVEL);
+			#endif
+			return (level >= LodUtil.MAX_FLUID_AMOUNT) ? LodUtil.MAX_FLUID_AMOUNT : (LodUtil.MAX_FLUID_AMOUNT - level);
+		}
+
+		// Forge fluids (ex: Tinkers' Construct) store their level in the meta as well,
+		// but it's scaled by quantaPerBlock instead of vanilla's fixed 8
+		if (this.blockState.getBlock() instanceof BlockFluidBase)
+		{
+			// quantaPerBlock is made public via the access transformer
+			int quantaPerBlock = Math.max(1, ((BlockFluidBase) this.blockState.getBlock()).quantaPerBlock);
+			#if MC_VER <= MC_1_7_10
+			int level = this.blockState.getMeta();
+			#else
+			int level = this.blockState.getValue(BlockFluidBase.LEVEL);
+			#endif
+			
+			// classic fluids count down from a source (level 0 = full),
+			// finite fluids count up (level = quanta - 1)
+			int quantaRemaining = (this.blockState.getBlock() instanceof BlockFluidFinite)
+					? (level + 1)
+					: (quantaPerBlock - level);
+			int amount = Math.round((quantaRemaining * LodUtil.MAX_FLUID_AMOUNT) / (float) quantaPerBlock);
+			return Math.max(LodUtil.MIN_FLUID_AMOUNT, Math.min(LodUtil.MAX_FLUID_AMOUNT, amount));
+		}
+		
+		// other modded fluids render full
+		return LodUtil.MAX_FLUID_AMOUNT;
+		#else
+		return this.blockState.getFluidState().getAmount();
+		#endif
+	}
+	
+	@Override
+	public boolean isWaterlogged()
+	{
+		if (this.blockState == null)
+		{
+			return false;
+		}
+		
+		#if MC_VER <= MC_1_12_2
+		return false;
+		#else
+		// bubble columns are water source blocks, not waterlogged blocks
+		return !this.blockState.getFluidState().isEmpty()
+			&& !(this.blockState.getBlock() instanceof LiquidBlock)
+			&& !this.blockState.is(Blocks.BUBBLE_COLUMN);
+		#endif
+	}
+	
+	@Override
+	public boolean isRotatedPillar()
+	{
+		if (this.blockState == null)
+		{
+			return false;
+		}
+		
+		#if MC_VER <= MC_1_12_2
+		return this.blockState.getBlock() instanceof BlockRotatedPillar;
+		#else
+		return this.blockState.getBlock() instanceof RotatedPillarBlock;
 		#endif
 	}
 	
@@ -1453,6 +1613,8 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	}
 	
 	@Override public boolean isSolid() { return this.isSolid; }
+	@Override public boolean isFullBlock() { return this.isFullBlock; }
+	@Override public boolean isFaceFull(EDhDirection direction) { return this.isFaceFullByFaceIndex[direction.faceIndex]; }
 	@Override public boolean isLiquid() { return this.isLiquid; }
 	@Override public boolean isBeaconBlock() { return this.isBeaconBlock; }
 	@Override public boolean isBeaconBaseBlock() { return this.isBeaconBaseBlock; }
@@ -1461,6 +1623,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	@Override public boolean allowsBeaconBeamPassage() { return this.allowsBeaconBeamPassage; }
 	@Override public boolean allowApiColorOverride() { return this.allowApiColorOverride; }
 	@Override public boolean allowApiTextureOverride() { return this.allowApiTextureOverride; }
+	@Override public boolean allowApiModelOverride() { return this.allowApiModelOverride; }
 	@Override public boolean renderTexture() { return this.renderTexture; }
 	@Override public boolean useBottomTextureForSides() { return this.useBottomTextureForSides; }
 	@Override public boolean alwaysRasterizeTexture() { return this.alwaysRasterizeTexture; }
