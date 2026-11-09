@@ -335,9 +335,17 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 						
 						
 						// render each buffer
-						IDhApiVertexBufferWrapper[] bufferWrapperList = opaquePass 
-							? apiBufferContainer.getVboOpaqueWrappers() 
-							: apiBufferContainer.getVboTransparentWrappers();
+						IDhApiVertexBufferWrapper[] bufferWrapperList;
+						if (!opaquePass)
+						{
+							bufferWrapperList = apiBufferContainer.getVboTransparentWrappers();
+						}
+						else
+						{
+							bufferWrapperList = renderEventParam.renderingWithoutSsao 
+								? apiBufferContainer.getVboWithoutSsaoWrappers() 
+								: apiBufferContainer.getVboOpaqueWrappers();
+						}
 						for (int i = 0; i < bufferWrapperList.length; i++)
 						{
 							BlazeVertexBufferWrapper bufferWrapper = (BlazeVertexBufferWrapper) bufferWrapperList[i];

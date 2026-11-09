@@ -421,7 +421,17 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 					BEFORE_BUFFER_RENDER_EVENT_PARAM.clearLevelReferences();
 				}
 				
-				IDhApiVertexBufferWrapper[] vertexBuffers = (opaquePass ? apiBufferContainer.getVboOpaqueWrappers() : apiBufferContainer.getVboTransparentWrappers());
+				IDhApiVertexBufferWrapper[] vertexBuffers;
+				if (!opaquePass)
+				{
+					vertexBuffers = apiBufferContainer.getVboTransparentWrappers();
+				}
+				else
+				{
+					vertexBuffers = renderEventParam.renderingWithoutSsao 
+						? apiBufferContainer.getVboWithoutSsaoWrappers() 
+						: apiBufferContainer.getVboOpaqueWrappers();
+				}
 				for (int vboIndex = 0; vboIndex < vertexBuffers.length; vboIndex++)
 				{
 					GLVertexBuffer vbo = (GLVertexBuffer) vertexBuffers[vboIndex];

@@ -217,7 +217,8 @@ public class ClientBlockStateTextureCache
 		BlockStateWrapper blockStateWrapper, @Nullable EDhDirection cullDirection,
 		ArrayList<DhBlockModelQuad> modelQuads, HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite) throws Exception
 	{
-		List<BakedQuad> bakedQuads = QuadWrapper.getQuadsForDirection(blockStateWrapper.blockState, cullDirection);
+		Set<BakedQuad> quadsWithoutAmbientOcclusion = new HashSet<>();
+		List<BakedQuad> bakedQuads = QuadWrapper.getQuadsForDirection(blockStateWrapper.blockState, cullDirection, quadsWithoutAmbientOcclusion);
 		if (bakedQuads == null)
 		{
 			return;
@@ -225,12 +226,12 @@ public class ClientBlockStateTextureCache
 		
 		for (BakedQuad bakedQuad : bakedQuads)
 		{
-			addModelQuad(decodeQuad(bakedQuad, null), cullDirection, modelQuads, textureBySprite);
+			addModelQuad(decodeQuad(bakedQuad, null), cullDirection, !quadsWithoutAmbientOcclusion.contains(bakedQuad), modelQuads, textureBySprite);
 		}
 	}
 	
 	private static void addModelQuad(
-		QuadGeometry geometry, @Nullable EDhDirection cullDirection,
+		QuadGeometry geometry, @Nullable EDhDirection cullDirection, boolean ambientOcclusion,
 		ArrayList<DhBlockModelQuad> modelQuads, HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite)
 	{
 		float[] uByVertex = geometry.spriteUByVertex;
@@ -258,7 +259,7 @@ public class ClientBlockStateTextureCache
 		modelQuads.add(new DhBlockModelQuad(
 			geometry.xByVertex, geometry.yByVertex, geometry.zByVertex,
 			uByVertex, vByVertex,
-			texture, cullDirection, geometry.tinted));
+			texture, cullDirection, geometry.tinted, geometry.shadeDirectionOverride, ambientOcclusion));
 	}
 	
 	/** Quads on textures bigger than a tile */
@@ -366,7 +367,7 @@ public class ClientBlockStateTextureCache
 					modelQuads.add(new DhBlockModelQuad(
 						apiQuad.xByCorner, apiQuad.yByCorner, apiQuad.zByCorner,
 						apiQuad.uByCorner, apiQuad.vByCorner,
-						texture, cullDirection, false));
+						texture, cullDirection, false, null, true));
 				}
 			}
 		}
@@ -861,6 +862,7 @@ public class ClientBlockStateTextureCache
 		
 		geometry.sprite = getQuadSprite(quad);
 		geometry.tinted = isQuadTinted(quad);
+		geometry.shadeDirectionOverride = getQuadShadeDirectionOverride(quad);
 		
 		for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++)
 		{
@@ -1023,6 +1025,8 @@ public class ClientBlockStateTextureCache
 		
 		public TextureAtlasSprite sprite;
 		public boolean tinted;
+		@Nullable
+		public EDhDirection shadeDirectionOverride;
 		
 		
 		public double getAverageDepth()
@@ -1133,6 +1137,31 @@ public class ClientBlockStateTextureCache
 		return quad.isTinted();
 		#else
 		return quad.materialInfo().isTinted();
+		#endif
+	}
+
+	/** The side vanilla shades the quad as instead of its facing, null if none */
+	@Nullable
+	static EDhDirection getQuadShadeDirectionOverride(BakedQuad quad)
+	{
+		// unshaded quads are lit like a top face
+		#if MC_VER <= MC_1_12_2
+		return quad.shouldApplyDiffuseLighting() ? null : EDhDirection.UP;
+		#elif MC_VER < MC_1_21_5
+		return quad.isShade() ? null : EDhDirection.UP;
+		#elif MC_VER <= MC_1_21_11
+		return quad.shade() ? null : EDhDirection.UP;
+		#elif MC_VER < MC_26_3_0
+		return quad.materialInfo().shade() ? null : EDhDirection.UP;
+		#else
+		for (EDhDirection direction : EDhDirection.ALL)
+		{
+			if (McObjectConverter.convert(direction) == quad.materialInfo().shadeDirectionOverride())
+			{
+				return direction;
+			}
+		}
+		return null;
 		#endif
 	}
 	#endif
