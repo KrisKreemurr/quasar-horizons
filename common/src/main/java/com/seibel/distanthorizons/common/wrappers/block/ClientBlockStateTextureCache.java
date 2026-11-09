@@ -249,6 +249,12 @@ public class ClientBlockStateTextureCache
 			texture = textureBySprite.computeIfAbsent(geometry.sprite, ClientBlockStateTextureCache::bakeSpriteTexture);
 		}
 		
+		// fully clear quads never show
+		if (BlockRenderRegistry.calculateAverageVisibleColor(texture) == ColorUtil.INVISIBLE)
+		{
+			return;
+		}
+		
 		modelQuads.add(new DhBlockModelQuad(
 			geometry.xByVertex, geometry.yByVertex, geometry.zByVertex,
 			uByVertex, vByVertex,
@@ -303,7 +309,7 @@ public class ClientBlockStateTextureCache
 		return new DhBlockModelQuad[0];
 		#else
 		if (BlockStateWrapper.isAir(blockStateWrapper.blockState)
-			|| blockStateWrapper.isLiquid())
+			|| (blockStateWrapper.isLiquid() && !blockStateWrapper.isWaterlogged()))
 		{
 			return new DhBlockModelQuad[0];
 		}

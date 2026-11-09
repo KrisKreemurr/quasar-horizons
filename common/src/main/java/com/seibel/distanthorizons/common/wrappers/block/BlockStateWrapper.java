@@ -63,6 +63,7 @@ import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.SnowLayerBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 #endif
 import com.seibel.distanthorizons.core.logging.DhLogger;
 
@@ -198,6 +199,8 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	private final boolean isFullBlock;
 	/** indexed by {@link EDhDirection#faceIndex} */
 	private final boolean[] isFaceFullByFaceIndex = new boolean[6];
+	private final float maxHorizontalModelOffset;
+	private final float maxVerticalModelOffset;
 	private final boolean isLiquid;
 	private final boolean allowApiColorOverride;
 	private final boolean allowApiTextureOverride;
@@ -716,7 +719,12 @@ public class BlockStateWrapper implements IBlockStateWrapper
 				#elif MC_VER <= MC_1_12_2
 				this.isFullBlock = this.blockState.isFullCube();
 				#else
-				this.isFullBlock = Block.isShapeFullBlock(this.blockState.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
+				// see-through blocks without collision aren't full
+				this.isFullBlock = Block.isShapeFullBlock(this.blockState.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO))
+					&& (this.isSolid
+						|| getCanOcclude(this.blockState)
+						// powder snow's model is 12 quads per block
+						|| lowerCaseSerial.contains("minecraft:powder_snow"));
 				#endif
 				
 				for (EDhDirection direction : EDhDirection.ALL)
@@ -735,6 +743,28 @@ public class BlockStateWrapper implements IBlockStateWrapper
 					#endif
 				}
 			}
+		}
+		
+		
+		// model offset //
+		{
+			#if MC_VER <= MC_1_12_2
+			this.maxHorizontalModelOffset = 0;
+			this.maxVerticalModelOffset = 0;
+			#else
+			Vec3 largestOffset = Vec3.ZERO;
+			if (this.blockState != null)
+			{
+				// the offset at 0, 0 is the largest
+				#if MC_VER < MC_1_21_3
+				largestOffset = this.blockState.getOffset(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+				#else
+				largestOffset = this.blockState.getOffset(BlockPos.ZERO);
+				#endif
+			}
+			this.maxHorizontalModelOffset = (float) Math.abs(largestOffset.x);
+			this.maxVerticalModelOffset = (float) Math.abs(largestOffset.y);
+			#endif
 		}
 		
 		
@@ -777,7 +807,9 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		isLeafBlock = blockState.is(BlockTags.LEAVES);
 		#endif
 		if (isLeafBlock
-			|| lowercaseSerialString.contains("bamboo")
+			// the bamboo plant, not blocks made from it
+			|| lowercaseSerialString.contains("minecraft:bamboo_state_")
+			|| lowercaseSerialString.contains("minecraft:bamboo_sapling")
 			|| lowercaseSerialString.contains("cactus")
 			|| lowercaseSerialString.contains("chorus_flower")
 			|| lowercaseSerialString.contains("mushroom")
@@ -1615,6 +1647,8 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	@Override public boolean isSolid() { return this.isSolid; }
 	@Override public boolean isFullBlock() { return this.isFullBlock; }
 	@Override public boolean isFaceFull(EDhDirection direction) { return this.isFaceFullByFaceIndex[direction.faceIndex]; }
+	@Override public float getMaxHorizontalModelOffset() { return this.maxHorizontalModelOffset; }
+	@Override public float getMaxVerticalModelOffset() { return this.maxVerticalModelOffset; }
 	@Override public boolean isLiquid() { return this.isLiquid; }
 	@Override public boolean isBeaconBlock() { return this.isBeaconBlock; }
 	@Override public boolean isBeaconBaseBlock() { return this.isBeaconBaseBlock; }
