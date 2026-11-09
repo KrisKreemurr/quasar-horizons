@@ -249,6 +249,12 @@ public class ClientBlockStateTextureCache
 			texture = textureBySprite.computeIfAbsent(geometry.sprite, ClientBlockStateTextureCache::bakeSpriteTexture);
 		}
 		
+		// fully clear quads never show
+		if (BlockRenderRegistry.calculateAverageVisibleColor(texture) == ColorUtil.INVISIBLE)
+		{
+			return;
+		}
+		
 		modelQuads.add(new DhBlockModelQuad(
 			geometry.xByVertex, geometry.yByVertex, geometry.zByVertex,
 			uByVertex, vByVertex,
