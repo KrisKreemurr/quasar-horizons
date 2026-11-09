@@ -807,7 +807,9 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		isLeafBlock = blockState.is(BlockTags.LEAVES);
 		#endif
 		if (isLeafBlock
-			|| lowercaseSerialString.contains("bamboo")
+			// the bamboo plant, not blocks made from it
+			|| lowercaseSerialString.contains("minecraft:bamboo_state_")
+			|| lowercaseSerialString.contains("minecraft:bamboo_sapling")
 			|| lowercaseSerialString.contains("cactus")
 			|| lowercaseSerialString.contains("chorus_flower")
 			|| lowercaseSerialString.contains("mushroom")

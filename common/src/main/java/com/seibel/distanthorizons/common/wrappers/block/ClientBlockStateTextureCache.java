@@ -309,7 +309,7 @@ public class ClientBlockStateTextureCache
 		return new DhBlockModelQuad[0];
 		#else
 		if (BlockStateWrapper.isAir(blockStateWrapper.blockState)
-			|| blockStateWrapper.isLiquid())
+			|| (blockStateWrapper.isLiquid() && !blockStateWrapper.isWaterlogged()))
 		{
 			return new DhBlockModelQuad[0];
 		}
