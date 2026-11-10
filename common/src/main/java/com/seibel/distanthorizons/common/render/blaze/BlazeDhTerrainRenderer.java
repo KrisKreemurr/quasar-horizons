@@ -22,6 +22,7 @@ import com.mojang.renderpearl.api.vertex.VertexFormat;
 #endif
 
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthDirection;
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiTerrainBufferContainer;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeBufferRenderEvent;
@@ -171,11 +172,12 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 	@Override
 	public void render(
 		DhApiRenderParam apiRenderEventParam, 
-		boolean opaquePass,
+		EDhApiTerrainRenderPass renderPass,
 		IDhApiReadOnlyList<? extends IDhApiTerrainBufferContainer> bufferContainers)
 	{
 		RenderParam renderEventParam = (RenderParam)apiRenderEventParam;
 		IProfilerWrapper profiler = renderEventParam.profiler;
+		boolean opaquePass = (renderPass != EDhApiTerrainRenderPass.TRANSPARENT);
 		
 		this.tryInit(renderEventParam);
 		
@@ -342,7 +344,7 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 						}
 						else
 						{
-							bufferWrapperList = renderEventParam.renderingWithoutSsao 
+							bufferWrapperList = (renderPass == EDhApiTerrainRenderPass.OPAQUE_WITHOUT_SSAO)
 								? apiBufferContainer.getVboWithoutSsaoWrappers() 
 								: apiBufferContainer.getVboOpaqueWrappers();
 						}
