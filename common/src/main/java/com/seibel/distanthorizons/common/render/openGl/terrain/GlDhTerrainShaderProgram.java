@@ -1,5 +1,6 @@
 package com.seibel.distanthorizons.common.render.openGl.terrain;
 
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainVertexFormat;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiShaderProgram;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiTerrainBufferContainer;
@@ -340,9 +341,11 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 	//region
 	
 	public void render(
-		RenderParam renderEventParam, boolean opaquePass,
+		RenderParam renderEventParam, EDhApiTerrainRenderPass renderPass,
 		IDhApiReadOnlyList<? extends IDhApiTerrainBufferContainer> bufferContainers)
 	{
+		boolean opaquePass = (renderPass != EDhApiTerrainRenderPass.TRANSPARENT);
+		
 		//=======================//
 		// debug wireframe setup //
 		//=======================//
@@ -421,7 +424,17 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 					BEFORE_BUFFER_RENDER_EVENT_PARAM.clearLevelReferences();
 				}
 				
-				IDhApiVertexBufferWrapper[] vertexBuffers = (opaquePass ? apiBufferContainer.getVboOpaqueWrappers() : apiBufferContainer.getVboTransparentWrappers());
+				IDhApiVertexBufferWrapper[] vertexBuffers;
+				if (!opaquePass)
+				{
+					vertexBuffers = apiBufferContainer.getVboTransparentWrappers();
+				}
+				else
+				{
+					vertexBuffers = (renderPass == EDhApiTerrainRenderPass.OPAQUE_WITHOUT_SSAO)
+						? apiBufferContainer.getVboWithoutSsaoWrappers() 
+						: apiBufferContainer.getVboOpaqueWrappers();
+				}
 				for (int vboIndex = 0; vboIndex < vertexBuffers.length; vboIndex++)
 				{
 					GLVertexBuffer vbo = (GLVertexBuffer) vertexBuffers[vboIndex];
