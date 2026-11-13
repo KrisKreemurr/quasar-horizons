@@ -193,6 +193,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	private final boolean isIceBlock;
 	private final boolean allowsBeaconBeamPassage;
 	private final boolean renderTexture;
+	private final boolean renderModel;
 	private final boolean useBottomTextureForSides;
 	private final boolean alwaysRasterizeTexture;
 	private final boolean isSolid;
@@ -649,6 +650,13 @@ public class BlockStateWrapper implements IBlockStateWrapper
 				String alwaysRasterNamesCsv = Config.Client.Advanced.Graphics.Texture.blocksAlwaysRasterizeTextureCsv.get();
 				this.alwaysRasterizeTexture = blockSerialInCsv(lowerCaseSerial, alwaysRasterNamesCsv);
 			}
+		}
+		
+		
+		// model ignoring //
+		{
+			String dontModelNamesCsv = Config.Client.Advanced.Graphics.Model.blocksDontRenderModelCsv.get();
+			this.renderModel = !blockSerialInCsv(lowerCaseSerial, dontModelNamesCsv);
 		}
 		
 		
@@ -1661,6 +1669,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	@Override public boolean allowApiTextureOverride() { return this.allowApiTextureOverride; }
 	@Override public boolean allowApiModelOverride() { return this.allowApiModelOverride; }
 	@Override public boolean renderTexture() { return this.renderTexture; }
+	@Override public boolean renderModel() { return this.renderModel; }
 	@Override public boolean useBottomTextureForSides() { return this.useBottomTextureForSides; }
 	@Override public boolean alwaysRasterizeTexture() { return this.alwaysRasterizeTexture; }
 	
