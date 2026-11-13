@@ -45,6 +45,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 #else
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ProtoChunk;
@@ -540,7 +541,13 @@ public class ChunkWrapper implements IChunkWrapper
 		
 		try
 		{
-			return BlockStateWrapper.fromBlockState(this.chunk.getBlockState(blockPos), this.wrappedLevel);
+			#if MC_VER <= MC_1_12_2
+			IBlockState blockState = this.chunk.getBlockState(blockPos);
+			blockState = blockState.getActualState(this.chunk.getWorld(), blockPos);
+			#else
+			BlockState blockState = this.chunk.getBlockState(blockPos);
+			#endif
+			return BlockStateWrapper.fromBlockState(blockState, this.wrappedLevel);
 		}
 		catch (Exception e)
 		{
@@ -590,7 +597,13 @@ public class ChunkWrapper implements IChunkWrapper
 	
 		try
 		{
-			return BlockStateWrapper.fromBlockState(this.chunk.getBlockState(pos), this.wrappedLevel, guess);
+			#if MC_VER <= MC_1_12_2
+			IBlockState blockState = this.chunk.getBlockState(pos);
+			blockState = blockState.getActualState(this.chunk.getWorld(), pos);
+			#else
+			BlockState blockState = this.chunk.getBlockState(pos);
+			#endif
+			return BlockStateWrapper.fromBlockState(blockState, this.wrappedLevel);
 		}
 			catch (Exception e)
 		{
