@@ -736,7 +736,9 @@ public class BlockStateWrapper implements IBlockStateWrapper
 					this.isFaceFullByFaceIndex[direction.faceIndex] = this.blockState.isOpaqueCube();
 					#elif MC_VER < MC_1_21_3
 					Direction mcDirection = McObjectConverter.convert(direction);
-					this.isFaceFullByFaceIndex[direction.faceIndex] = Block.isFaceFull(this.blockState.getFaceOcclusionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, mcDirection), mcDirection);
+					// blocks that can't occlude hide nothing
+					this.isFaceFullByFaceIndex[direction.faceIndex] = getCanOcclude(this.blockState)
+						&& Block.isFaceFull(this.blockState.getFaceOcclusionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, mcDirection), mcDirection);
 					#else
 					Direction mcDirection = McObjectConverter.convert(direction);
 					this.isFaceFullByFaceIndex[direction.faceIndex] = Block.isFaceFull(this.blockState.getFaceOcclusionShape(mcDirection), mcDirection);
