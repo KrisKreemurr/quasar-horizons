@@ -128,6 +128,8 @@ public class ChunkWrapper implements IChunkWrapper
 	private int[][] solidHeightMap = null;
 	/** will be null if we are using MC heightmaps */
 	private int[][] lightBlockingHeightMap = null;
+	/** will be null if we are using MC heightmaps */
+	private int[][] nonAirHeightMap = null;
 	
 	#if MC_VER <= MC_1_7_10
 	private final BiomeGenBase[] biomeList;
@@ -386,6 +388,7 @@ public class ChunkWrapper implements IChunkWrapper
 		
 		this.solidHeightMap = new int[LodUtil.CHUNK_WIDTH][LodUtil.CHUNK_WIDTH];
 		this.lightBlockingHeightMap = new int[LodUtil.CHUNK_WIDTH][LodUtil.CHUNK_WIDTH];
+		this.nonAirHeightMap = new int[LodUtil.CHUNK_WIDTH][LodUtil.CHUNK_WIDTH];
 		
 		for (int x = 0; x < LodUtil.CHUNK_WIDTH; x++)
 		{
@@ -395,6 +398,7 @@ public class ChunkWrapper implements IChunkWrapper
 				// if no blocks are found the height map will be at the bottom of the world
 				int solidHeight = minInclusiveBuildHeight;
 				int lightBlockingHeight = minInclusiveBuildHeight;
+				int nonAirHeight = minInclusiveBuildHeight;
 				
 				
 				int y = this.getMaxNonEmptyHeight(); //this.getExclusiveMaxBuildHeight();
@@ -409,6 +413,13 @@ public class ChunkWrapper implements IChunkWrapper
 						)
 					)
 				{
+					// is this block anything but air?
+					if (nonAirHeight == minInclusiveBuildHeight
+						&& !block.isAir())
+					{
+						nonAirHeight = y;
+					}
+					
 					// is this block solid?
 					if (solidHeight == minInclusiveBuildHeight
 						&& block.isSolid())
@@ -430,6 +441,7 @@ public class ChunkWrapper implements IChunkWrapper
 				
 				this.solidHeightMap[x][z] = solidHeight;
 				this.lightBlockingHeightMap[x][z] = lightBlockingHeight;
+				this.nonAirHeightMap[x][z] = nonAirHeight;
 			}
 		}
 	}
@@ -472,6 +484,22 @@ public class ChunkWrapper implements IChunkWrapper
 		else
 		{
 			return this.lightBlockingHeightMap[xRel][zRel];
+		}
+	}
+	
+	@Override
+	public int getNonAirHeightMapValue(int xRel, int zRel)
+	{
+		this.throwIndexOutOfBoundsIfRelativePosOutsideChunkBounds(xRel, zRel);
+		
+		// without DH's heightmaps, use the highest of MC's
+		if (this.nonAirHeightMap == null)
+		{
+			return Math.max(this.getLightBlockingHeightMapValue(xRel, zRel), this.getSolidHeightMapValue(xRel, zRel));
+		}
+		else
+		{
+			return this.nonAirHeightMap[xRel][zRel];
 		}
 	}
 	
