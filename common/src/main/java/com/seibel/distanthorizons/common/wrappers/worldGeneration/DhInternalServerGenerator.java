@@ -282,6 +282,7 @@ public class DhInternalServerGenerator
 		this.runValidation();
 		
 		ArrayList<CompletableFuture<ChunkWrapper>> getChunkFutureList = new ArrayList<>();
+		ArrayList<IChunkWrapper> chunkWrappers = new ArrayList<>();
 		try
 		{
 			//=====================//
@@ -341,37 +342,14 @@ public class DhInternalServerGenerator
 			// but will also prevent over-queuing world gen tasks.
 			// If C2ME is present the CPU will still be well utilized.
 			
-			ArrayList<IChunkWrapper> chunkWrappers = new ArrayList<>();
 			for (int i = 0; i < getChunkFutureList.size(); i++)
 			{
 				CompletableFuture<ChunkWrapper> getChunkFuture = getChunkFutureList.get(i);
 				ChunkWrapper chunkWrapper = getChunkFuture.join();
 				if (chunkWrapper != null)
 				{
-					chunkWrapper.createDhHeightMaps();
 					chunkWrappers.add(chunkWrapper);
 				}
-			}
-			
-			
-			
-			//==========================//
-			// process generated chunks //
-			//==========================//
-			
-			int maxSkyLight = this.dhServerLevel.getServerLevelWrapper().hasSkyLight() ? LodUtil.MAX_MC_LIGHT : LodUtil.MIN_MC_LIGHT;
-			for (int i = 0; i < chunkWrappers.size(); i++)
-			{
-				ChunkWrapper chunkWrapper = (ChunkWrapper)chunkWrappers.get(i);
-				
-				// pre-generated chunks should have lighting but new ones won't
-				if (!chunkWrapper.isDhBlockLightingCorrect())
-				{
-					DhLightingEngine.INSTANCE.bakeChunkBlockLighting(chunkWrapper, chunkWrappers, maxSkyLight);
-				}
-				
-				this.dhServerLevel.updateBeaconBeamsForChunk(chunkWrapper, chunkWrappers);
-				genEvent.resultConsumer.accept(chunkWrapper);
 			}
 		}
 		finally
@@ -448,6 +426,34 @@ public class DhInternalServerGenerator
 			});
 			this.joinServerCleanupFuture(tickFuture);
 			#endif
+		}
+		
+		
+		
+		//==========================//
+		// process generated chunks //
+		//==========================//
+		
+		// Only done once the chunks are released:
+		// until then other generation events can still populate their neighbors and place blocks into these chunks.
+		// Height maps created before that would be outdated, the LODs would miss those blocks (IE cut off tree crowns).
+		int maxSkyLight = this.dhServerLevel.getServerLevelWrapper().hasSkyLight() ? LodUtil.MAX_MC_LIGHT : LodUtil.MIN_MC_LIGHT;
+		for (int i = 0; i < chunkWrappers.size(); i++)
+		{
+			((ChunkWrapper) chunkWrappers.get(i)).createDhHeightMaps();
+		}
+		for (int i = 0; i < chunkWrappers.size(); i++)
+		{
+			ChunkWrapper chunkWrapper = (ChunkWrapper)chunkWrappers.get(i);
+			
+			// pre-generated chunks should have lighting but new ones won't
+			if (!chunkWrapper.isDhBlockLightingCorrect())
+			{
+				DhLightingEngine.INSTANCE.bakeChunkBlockLighting(chunkWrapper, chunkWrappers, maxSkyLight);
+			}
+			
+			this.dhServerLevel.updateBeaconBeamsForChunk(chunkWrapper, chunkWrappers);
+			genEvent.resultConsumer.accept(chunkWrapper);
 		}
 	}
 	private void joinServerCleanupFuture(CompletableFuture<Void> future)
@@ -531,9 +537,11 @@ public class DhInternalServerGenerator
 			
 			// Ignore chunk update events for this position.
 			// Would be added by the loop later, but also here instead of the main server thread.
+			// Updates queued before are dropped, they could overwrite the LOD this event builds with outdated height maps.
 			if (this.updateManager != null)
 			{
 				this.updateManager.addPosToIgnore(McObjectConverter.convert(chunkPos));
+				this.updateManager.invalidatePendingUpdate(McObjectConverter.convert(chunkPos));
 			}
 			
 			return ServerThreadTaskHandler.INSTANCE.queueTask(() ->
@@ -607,10 +615,12 @@ public class DhInternalServerGenerator
 			{
 				ServerLevel level = this.params.mcServerLevel;
 				
-				// ignore chunk update events for this position
+				// ignore chunk update events for this position,
+				// updates queued before are dropped since they could overwrite the LOD this event builds
 				if (this.updateManager != null)
 				{
 					this.updateManager.addPosToIgnore(McObjectConverter.convert(chunkPos));
+					this.updateManager.invalidatePendingUpdate(McObjectConverter.convert(chunkPos));
 				}
 				
 				#if MC_VER < MC_1_21_5
@@ -662,6 +672,30 @@ public class DhInternalServerGenerator
 	#endif
 	{
 		#if MC_VER <= MC_1_12_2
+		// chunks that already have an LOD stop being ignored when they are released,
+		// so changes the population made to them reach the LOD through their unload save.
+		// looked up here so the server thread doesn't wait on the DB.
+		HashSet<DhChunkPos> chunkPosWithLodSet = new HashSet<>();
+		try
+		{
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				for (int dz = -1; dz <= 1; dz++)
+				{
+					DhChunkPos neighborDhPos = new DhChunkPos(chunkPos.x + dx, chunkPos.z + dz);
+					if (this.dhServerLevel.getChunkHash(neighborDhPos) != 0)
+					{
+						chunkPosWithLodSet.add(neighborDhPos);
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// the chunks still have to be released, they just stay ignored for a while like before
+			LOGGER.warn("Failed to get chunk hashes around ["+chunkPos+"], error: ["+e.getMessage()+"]", e);
+		}
+		
 		return ServerThreadTaskHandler.INSTANCE.queueEssentialTask(() ->
 		{
 			try
@@ -688,6 +722,14 @@ public class DhInternalServerGenerator
 							// another generation event still needs this chunk loaded
 							continue;
 						}
+						
+						// must happen before the unload is queued, MC may save and unload the chunk on its next tick.
+						// the update queue's hash check drops the save if nothing changed.
+						boolean hasLod = chunkPosWithLodSet.contains(neighborDhPos);
+						if (hasLod && this.updateManager != null)
+						{
+							this.updateManager.removePosToIgnore(neighborDhPos);
+						}
 	
 						// in both cases the chunk is only queued for unload here, it's actually
 						// freed by the drain once the whole generation event is done
@@ -712,7 +754,10 @@ public class DhInternalServerGenerator
 						}
 						#endif
 	
-						this.scheduleRemovePosToIgnore(neighborDhPos);
+						if (!hasLod)
+						{
+							this.scheduleRemovePosToIgnore(neighborDhPos);
+						}
 					}
 				}
 			}

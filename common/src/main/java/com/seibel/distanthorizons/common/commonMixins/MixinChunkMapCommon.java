@@ -39,8 +39,8 @@ public class MixinChunkMapCommon
 		chunkPosZ = chunk.getPos().z();
 		#endif
 		
-		// is this position already being updated?
-		if (SharedApi.isChunkAtChunkPosAlreadyUpdating(levelWrapper, chunkPosX, chunkPosZ))
+		// is this position ignored? (an already queued update is replaced by this newer one)
+		if (SharedApi.isChunkAtChunkPosIgnored(levelWrapper, chunkPosX, chunkPosZ))
 		{
 			return;
 		}
