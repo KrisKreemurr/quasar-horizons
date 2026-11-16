@@ -52,6 +52,11 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 #endif
 
+#if MC_VER <= MC_1_7_10
+#elif MC_VER <= MC_1_12_2
+import net.minecraft.world.ChunkCache;
+#endif
+
 import com.seibel.distanthorizons.core.logging.DhLogger;
 
 import java.util.*;
@@ -103,6 +108,12 @@ public class ChunkWrapper implements IChunkWrapper
 	public static final Set<String> LOGGED_BLOCK_GET_ERRORS = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
 	
 	private static boolean heightmapThreadWarningLogged = false;
+	
+	#if MC_VER <= MC_1_7_10
+	#elif MC_VER <= MC_1_12_2
+	// We need to create ChunkCache so getActualState doesn't cause crash
+	private final ChunkCache chunkCache;
+	#endif
 	
 	#if MC_VER <= MC_1_12_2
 	private final Chunk chunk;
@@ -163,6 +174,13 @@ public class ChunkWrapper implements IChunkWrapper
 		this.chunkPos = new DhChunkPos(chunk.getPos().x, chunk.getPos().z);
 		#else
 		this.chunkPos = new DhChunkPos(chunk.getPos().x(), chunk.getPos().z());
+		#endif
+		
+		#if MC_VER <= MC_1_7_10
+		#elif MC_VER <= MC_1_12_2
+		int minX = this.chunkPos.getMinBlockX();
+		int minZ = this.chunkPos.getMinBlockZ();
+		this.chunkCache = new ChunkCache(chunk.getWorld(), new BlockPos(minX, 0, minZ), new BlockPos(minX + 15, 255, minZ + 15), 0);
 		#endif
 	}
 	
@@ -571,7 +589,7 @@ public class ChunkWrapper implements IChunkWrapper
 		{
 			#if MC_VER <= MC_1_12_2
 			IBlockState blockState = this.chunk.getBlockState(blockPos);
-			blockState = blockState.getActualState(this.chunk.getWorld(), blockPos);
+			blockState = blockState.getActualState(chunkCache, blockPos);
 			#else
 			BlockState blockState = this.chunk.getBlockState(blockPos);
 			#endif
@@ -627,7 +645,7 @@ public class ChunkWrapper implements IChunkWrapper
 		{
 			#if MC_VER <= MC_1_12_2
 			IBlockState blockState = this.chunk.getBlockState(pos);
-			blockState = blockState.getActualState(this.chunk.getWorld(), pos);
+			blockState = blockState.getActualState(chunkCache, pos);
 			#else
 			BlockState blockState = this.chunk.getBlockState(pos);
 			#endif
