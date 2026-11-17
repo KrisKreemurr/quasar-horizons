@@ -44,6 +44,7 @@ import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fluids.BlockFluidBase;
 import net.minecraftforge.fluids.BlockFluidFinite;
 import com.seibel.distanthorizons.common.backports.FakeBlockState;
+import com.seibel.distanthorizons.common.backports.FakeWorld;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.block.*;
 import net.minecraft.init.Blocks;
@@ -728,6 +729,18 @@ public class BlockStateWrapper implements IBlockStateWrapper
 				#if MC_VER <= MC_1_7_10
 				// render type 0 blocks can be smaller than a full cube
 				Block block = this.blockState.getBlock();
+				try
+				{
+					// the bounds are shared by all states (per thread with Angelica),
+					// the block sets them for this state's meta here
+					FakeWorld fakeWorld = new FakeWorld();
+					fakeWorld.update(null, null, 0, 0, 0, (FakeBlockState) this.blockState);
+					block.setBlockBoundsBasedOnState(fakeWorld, 0, 0, 0);
+				}
+				catch (Exception ignore)
+				{
+					// some blocks need a real world or tile entity, they keep their current bounds
+				}
 				this.isFullBlock = block.getRenderType() == 0
 					&& block.getBlockBoundsMinX() == 0 && block.getBlockBoundsMinY() == 0 && block.getBlockBoundsMinZ() == 0
 					&& block.getBlockBoundsMaxX() == 1 && block.getBlockBoundsMaxY() == 1 && block.getBlockBoundsMaxZ() == 1;
