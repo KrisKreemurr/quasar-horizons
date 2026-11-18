@@ -48,6 +48,8 @@ import com.seibel.distanthorizons.common.backports.FakeBlockState;
 import net.minecraft.block.*;
 import net.minecraft.init.Blocks;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.util.math.BlockPos;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.ILodBlockLookup;
 import net.minecraft.block.properties.IProperty;
 import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fluids.BlockFluidBase;
@@ -198,6 +200,11 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	private final boolean alwaysRasterizeTexture;
 	private final boolean isSolid;
 	private final boolean isFullBlock;
+	#if MC_VER > MC_1_7_10 && MC_VER <= MC_1_12_2
+	/** how {@link #resolveRenderState} handles this state, null until it's first needed */
+	@Nullable
+	private volatile ERenderResolve renderResolve = null;
+	#endif
 	/** indexed by {@link EDhDirection#faceIndex} */
 	private final boolean[] isFaceFullByFaceIndex = new boolean[6];
 	private final float maxHorizontalModelOffset;
@@ -1682,6 +1689,104 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	
 	
 	
+	#if MC_VER > MC_1_7_10 && MC_VER <= MC_1_12_2
+	//========================//
+	// render state resolving //
+	//========================//
+	//region
+	
+	@Override
+	public boolean needsRenderResolve() { return this.getRenderResolve() == ERenderResolve.NEEDS_NEIGHBORS; }
+	
+	/** getActualState again, with the neighbors from the LOD data instead of the chunk the state was stored from */
+	@Override
+	public IBlockStateWrapper resolveRenderState(ILodBlockLookup lookup, int blockX, int blockY, int blockZ)
+	{
+		if (this.getRenderResolve() != ERenderResolve.NEEDS_NEIGHBORS)
+		{
+			return this;
+		}
+		
+		BlockPos pos = new BlockPos(blockX, blockY, blockZ);
+		LodBlockAccess blockAccess = new LodBlockAccess(lookup, this.blockState, pos);
+		IBlockState renderState;
+		try
+		{
+			renderState = this.blockState.getActualState(blockAccess, pos);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warn("getActualState failed for ["+this.serialString+"] with LOD data, its stored state is used instead. Error: ["+e.getMessage()+"].", e);
+			this.renderResolve = ERenderResolve.NEEDS_TE;
+			return this;
+		}
+		
+		// the probe didn't see it, IE a tile entity that's only read for some neighbors
+		if (blockAccess.readTileEntity)
+		{
+			this.renderResolve = ERenderResolve.NEEDS_TE;
+			return this;
+		}
+		
+		// only this position is missing neighbors, IE diagonally across a section corner
+		if (blockAccess.readMissing)
+		{
+			return this;
+		}
+		
+		return fromBlockState(renderState, lookup.getLevelWrapper());
+	}
+	
+	private ERenderResolve getRenderResolve()
+	{
+		ERenderResolve renderResolve = this.renderResolve;
+		if (renderResolve == null)
+		{
+			renderResolve = this.probeRenderResolve();
+			this.renderResolve = renderResolve;
+		}
+		return renderResolve;
+	}
+	/** 
+	 * Calls getActualState once with only air around the block to see what it reads. <br>
+	 * Whether vanilla blocks read their neighbors only depends on their own state, never on what a read returned.
+	 */
+	private ERenderResolve probeRenderResolve()
+	{
+		if (this.blockState == null)
+		{
+			return ERenderResolve.NONE;
+		}
+		
+		LodBlockAccess probe = new LodBlockAccess(null, this.blockState, BlockPos.ORIGIN);
+		try
+		{
+			this.blockState.getActualState(probe, BlockPos.ORIGIN);
+		}
+		catch (Exception e)
+		{
+			return ERenderResolve.NEEDS_TE;
+		}
+		
+		if (probe.readTileEntity)
+		{
+			return ERenderResolve.NEEDS_TE;
+		}
+		return probe.readNeighbor ? ERenderResolve.NEEDS_NEIGHBORS : ERenderResolve.NONE;
+	}
+	
+	private enum ERenderResolve
+	{
+		/** The block is independent */
+		NONE,
+		/** The block needs neighboring blocks, supplied by the LOD data */
+		NEEDS_NEIGHBORS,
+		/** The block needs more than the LOD data has (like tile entities) */
+		NEEDS_TE,
+	}
+	
+	//endregion
+	#endif
 	//=======================//
 	// serialization methods //
 	//=======================//
