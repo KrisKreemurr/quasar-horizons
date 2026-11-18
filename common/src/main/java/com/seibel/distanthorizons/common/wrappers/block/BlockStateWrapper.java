@@ -1294,10 +1294,12 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		
 		ObjectOpenHashSet<String> baseIgnoredBlockResourceSet = new ObjectOpenHashSet<>();
-		waterSurfaceReplacementBlocks = getAllBlockWrappers(Config.Client.Advanced.Graphics.Culling.waterSurfaceBlockReplacementCsv, baseIgnoredBlockResourceSet, levelWrapper);
-		waterSurfaceReplacementBlocks.remove(AIR);
+		ObjectOpenHashSet<IBlockStateWrapper> replacementBlocks = getAllBlockWrappers(Config.Client.Advanced.Graphics.Culling.waterSurfaceBlockReplacementCsv, baseIgnoredBlockResourceSet, levelWrapper);
+		replacementBlocks.remove(AIR);
+		// only published once it's done, other threads use the cached set right away
+		waterSurfaceReplacementBlocks = replacementBlocks;
 		
-		return waterSurfaceReplacementBlocks;
+		return replacementBlocks;
 	}
 	public static ObjectOpenHashSet<IBlockStateWrapper> getWaterSubsurfaceReplacementBlocks(ILevelWrapper levelWrapper)
 	{
@@ -1308,12 +1310,14 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		
 		ObjectOpenHashSet<String> baseIgnoredBlockResourceSet = new ObjectOpenHashSet<>();
-		waterSubsurfaceReplacementBlocks = getAllBlockWrappers(Config.Client.Advanced.Graphics.Culling.waterSubSurfaceBlockReplacementCsv, baseIgnoredBlockResourceSet, levelWrapper);
+		ObjectOpenHashSet<IBlockStateWrapper> replacementBlocks = getAllBlockWrappers(Config.Client.Advanced.Graphics.Culling.waterSubSurfaceBlockReplacementCsv, baseIgnoredBlockResourceSet, levelWrapper);
 		// air will be present if any invalid resource locations are present
 		// but we don't want to replace air with water, that'll cause monoliths
-		waterSubsurfaceReplacementBlocks.remove(AIR);
+		replacementBlocks.remove(AIR);
+		// only published once it's done, other threads use the cached set right away
+		waterSubsurfaceReplacementBlocks = replacementBlocks;
 		
-		return waterSubsurfaceReplacementBlocks;
+		return replacementBlocks;
 	}
 	
 	//endregion
