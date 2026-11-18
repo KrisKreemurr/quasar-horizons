@@ -37,6 +37,7 @@ import net.minecraft.block.BlockBush;
 import net.minecraft.block.BlockFlower;
 import net.minecraft.block.BlockGrass;
 import net.minecraft.block.BlockLeavesBase;
+import net.minecraft.block.BlockRedstoneWire;
 import net.minecraft.init.Blocks;
 import net.minecraft.world.IBlockAccess;
 import net.minecraftforge.common.IShearable;
@@ -316,6 +317,12 @@ public class ClientBlockStateColorCache
 			
 			// Necessary for the Lord of the Rings (LOTR) mod
 			if (blockState.block instanceof IShearable)
+			{
+				this.needPostTinting = true;
+			}
+			
+			// only its colorMultiplier is red, the texture is gray
+			if (blockState.block instanceof BlockRedstoneWire)
 			{
 				this.needPostTinting = true;
 			}
