@@ -311,16 +311,15 @@ public class MixinLevelRenderer
 		}
 		
 		ClientApi.INSTANCE.renderDeferredLodsForShaders();
-		ClientApi.INSTANCE.renderFadeOpaque(); 
+		ClientApi.INSTANCE.renderFadeTransparent();
 	}
 	
-	// improved transparency is necessary since the normal transparent pass is in the same renderPass
-	// preventing us from adding our own render pass inbetween
+	// Only improved transparency leaves room for a fade between the opaque and translucent draws.
 	@Inject(at = @At("HEAD"), method = "executeOit")
 	private void executeOit(
 		final ChunkSectionsToRender chunkSectionsToRender, final FeatureRenderDispatcher.PreparedFrame featureFrame,
 		CallbackInfo callback)
-	{ ClientApi.INSTANCE.renderFadeTransparent(); }
+	{ ClientApi.INSTANCE.renderFadeOpaque(); }
 	
 	#endif
 	
