@@ -956,7 +956,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		//region
 		
 		boolean isGrassBlock;
-		#if MC_VER <= MC_1_7_10
+		#if MC_VER <= MC_1_12_2
 		isGrassBlock = blockState.getBlock() instanceof BlockGrass;
 		#else
 		isGrassBlock = lowercaseSerialString.contains("grass_block");
