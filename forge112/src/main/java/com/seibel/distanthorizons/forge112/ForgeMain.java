@@ -27,6 +27,7 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTe
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiEventParam;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modLoader.IForgeMain;
 import com.seibel.distanthorizons.forge112.modAccessor.IrisAccessor;
+import com.seibel.distanthorizons.forge112.modAccessor.ImpetusAccessor;
 import com.seibel.distanthorizons.forge112.modAccessor.ModChecker;
 import com.seibel.distanthorizons.forge112.modCompat.quark.Quark;
 import com.seibel.distanthorizons.forge112.modCompat.sereneseasons.SereneSeasons;
@@ -155,6 +156,7 @@ public class ForgeMain extends AbstractModInitializer implements IForgeMain
 	{
 		this.tryCreateModCompatAccessor("actinium", IIrisAccessor.class, IrisAccessor::new);
 		this.tryCreateModCompatAccessor("demonica", IIrisAccessor.class, IrisAccessor::new);
+		this.tryCreateModCompatAccessor("impetus", IIrisAccessor.class, ImpetusAccessor::new);
 		IRIS_ACCESSOR = ModAccessorInjector.INSTANCE.get(IIrisAccessor.class);
 	}
 	
