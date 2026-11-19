@@ -27,6 +27,7 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTe
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiEventParam;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modLoader.IForgeMain;
 import com.seibel.distanthorizons.forge112.modAccessor.IrisAccessor;
+import com.seibel.distanthorizons.forge112.modAccessor.ImpetusAccessor;
 import com.seibel.distanthorizons.forge112.modAccessor.ModChecker;
 import com.seibel.distanthorizons.forge112.modCompat.quark.Quark;
 import com.seibel.distanthorizons.forge112.modCompat.sereneseasons.SereneSeasons;
