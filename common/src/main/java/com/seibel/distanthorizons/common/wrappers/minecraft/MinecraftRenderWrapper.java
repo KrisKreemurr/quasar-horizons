@@ -498,6 +498,38 @@ public class MinecraftRenderWrapper implements IMinecraftRenderWrapper
 		#endif
 	}
 	
+	@Override
+	public boolean isOutsideCapturedFrustum(int minX, int minY, int minZ, int maxX, int maxY, int maxZ)
+	{
+		#if MC_VER < MC_1_19_4
+		// older versions' Frustum doesn't use JOML, not currently supported
+		return false;
+		#else
+		// MC 26 moved the captured frustum from the LevelRenderer to the Camera
+		#if MC_VER <= MC_1_21_11
+		net.minecraft.client.renderer.culling.Frustum frustum = MC.levelRenderer.capturedFrustum;
+		#elif MC_VER <= MC_26_1_2
+		net.minecraft.client.renderer.culling.Frustum frustum = MC.gameRenderer.getMainCamera().getCapturedFrustum();
+		#else
+		net.minecraft.client.renderer.culling.Frustum frustum = MC.gameRenderer.mainCamera().getCapturedFrustum();
+		#endif
+		if (frustum == null)
+		{
+			// F3+U isn't active
+			return false;
+		}
+
+		// Vanilla's frustum is relative to the camera position it was captured at, so the box needs to be offset into that space.
+		// The far plane is ignored since LODs render beyond vanilla's render distance.
+		// With a plane mask, intersectAab() returns the index of the culling plane if the box is outside.
+		int result = frustum.intersection.intersectAab(
+			(float) (minX - frustum.camX), (float) (minY - frustum.camY), (float) (minZ - frustum.camZ),
+			(float) (maxX - frustum.camX), (float) (maxY - frustum.camY), (float) (maxZ - frustum.camZ),
+			~org.joml.FrustumIntersection.PLANE_MASK_PZ);
+		return result != org.joml.FrustumIntersection.INSIDE && result != org.joml.FrustumIntersection.INTERSECT;
+		#endif
+	}
+
 	/** Measured in degrees */
 	@Override
 	public double getFovSetting()
