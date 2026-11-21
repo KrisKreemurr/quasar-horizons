@@ -54,6 +54,12 @@ import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 
 #if MC_VER <= MC_1_7_10
+import com.seibel.distanthorizons.common.backports.FakeBlockState;
+import com.seibel.distanthorizons.common.backports.FakeWorld;
+import com.seibel.distanthorizons.common.wrappers.modAccessor.IGtnhLibCommonAccessor;
+import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
+import net.minecraft.block.Block;
+import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraftforge.common.util.ForgeDirection;
 #elif MC_VER < MC_1_21_5
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -229,6 +235,7 @@ public class ClientBlockStateTextureCache
 			addModelQuad(decodeQuad(bakedQuad, null), cullDirection, !quadsWithoutAmbientOcclusion.contains(bakedQuad), modelQuads, textureBySprite);
 		}
 	}
+	#endif
 	
 	private static void addModelQuad(
 		QuadGeometry geometry, @Nullable EDhDirection cullDirection, boolean ambientOcclusion,
@@ -301,13 +308,54 @@ public class ClientBlockStateTextureCache
 		}
 		return BlockFaceTexture.createTexture(TEXTURE_WIDTH_AND_HEIGHT, TEXTURE_WIDTH_AND_HEIGHT, pixels);
 	}
-	#endif
 	
 	private static DhBlockModelQuad[] bakeModel(BlockStateWrapper blockStateWrapper)
 	{
 		#if MC_VER <= MC_1_7_10
-		// 1.7.10 doesn't have baked quads
-		return new DhBlockModelQuad[0];
+		if (blockStateWrapper.isAir()
+			|| blockStateWrapper.isLiquid())
+		{
+			return new DhBlockModelQuad[0];
+		}
+		
+		// 1.7.10 doesn't have baked quads,
+		// GTNHLib lets us capture what RenderBlocks draws off the render thread
+		IGtnhLibCommonAccessor gtnhLib = ModAccessorInjector.INSTANCE.get(IGtnhLibCommonAccessor.class);
+		Block block = blockStateWrapper.blockState.getBlock();
+		int renderType = block.getRenderType();
+		// full blocks are drawn as boxes
+		if (gtnhLib == null
+			|| blockStateWrapper.isFullBlock()
+			|| renderType < 0)
+		{
+			return new DhBlockModelQuad[0];
+		}
+		
+		ArrayList<DhBlockModelQuad> modelQuads = new ArrayList<>();
+		HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite = new HashMap<>();
+		try
+		{
+			// render state like block bounds is shared, so all baking is done in a lock
+			BAKE_LOCK.lock();
+			
+			// the block alone at the origin, neighbors are air
+			FakeWorld fakeWorld = new FakeWorld();
+			fakeWorld.update(MC.theWorld, BiomeGenBase.plains, 0, 0, 0, (FakeBlockState) blockStateWrapper.blockState);
+			
+			gtnhLib.captureQuads(fakeWorld, 0, 0, 0, block,
+				(geometry, cullDirection) -> addModelQuad(geometry, cullDirection, true, modelQuads, textureBySprite));
+		}
+		catch (Exception bakeError)
+		{
+			LOGGER.warn("Failed to read the model for block ["+blockStateWrapper.getSerialString()+"], error: ["+bakeError.getMessage()+"], block will render as a box.", bakeError);
+			modelQuads.clear();
+		}
+		finally
+		{
+			BAKE_LOCK.unlock();
+		}
+		
+		return modelQuads.toArray(new DhBlockModelQuad[0]);
 		#else
 		if (BlockStateWrapper.isAir(blockStateWrapper.blockState)
 			|| (blockStateWrapper.isLiquid() && !blockStateWrapper.isWaterlogged()))
@@ -983,9 +1031,9 @@ public class ClientBlockStateTextureCache
 		geometry.faceVByVertex[vertexIndex] = faceV;
 		geometry.depthByVertex[vertexIndex] = depth;
 	}
+	#endif
 	
 	//endregion
-	#endif
 	
 	
 	

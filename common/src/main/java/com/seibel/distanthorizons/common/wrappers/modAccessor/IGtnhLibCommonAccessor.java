@@ -21,7 +21,25 @@ package com.seibel.distanthorizons.common.wrappers.modAccessor;
 
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IModAccessor;
 
+#if MC_VER <= MC_1_7_10
+import com.seibel.distanthorizons.common.wrappers.block.QuadGeometry;
+import com.seibel.distanthorizons.core.enums.EDhDirection;
+import net.minecraft.block.Block;
+import net.minecraft.world.IBlockAccess;
+import java.util.function.BiConsumer;
+#endif
+
 public interface IGtnhLibCommonAccessor extends IModAccessor
 {
 	void renderTextAboveHotbar(String text);
+	
+	#if MC_VER <= MC_1_7_10
+	/**
+	 * Renders the block with GTNHLib's thread local Tessellator
+	 * and passes each quad it drew to {@code quadConsumer},
+	 * with the block side it lies on (null if it's inside the block). <br>
+	 * Quads without a sprite are skipped.
+	 */
+	void captureQuads(IBlockAccess world, int x, int y, int z, Block block, BiConsumer<QuadGeometry, EDhDirection> quadConsumer);
+	#endif
 }
