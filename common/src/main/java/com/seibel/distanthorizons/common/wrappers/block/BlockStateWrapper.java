@@ -44,10 +44,14 @@ import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fluids.BlockFluidBase;
 import net.minecraftforge.fluids.BlockFluidFinite;
 import com.seibel.distanthorizons.common.backports.FakeBlockState;
+import com.seibel.distanthorizons.common.backports.FakeWorld;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.ILodBlockLookup;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.block.*;
 import net.minecraft.init.Blocks;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.util.math.BlockPos;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.ILodBlockLookup;
 import net.minecraft.block.properties.IProperty;
 import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fluids.BlockFluidBase;
@@ -113,14 +117,21 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	public static final String RESOURCE_LOCATION_SEPARATOR = ":";
 	/** example "minecraft:water_STATE_{level:0}" */
 	public static final String STATE_STRING_SEPARATOR = "_STATE_";
+	/** 
+	 * Separates the 1.7.10 block state data, see {@link FakeBlockState#data}. <br>
+	 * The data itself is lowercase so it can't contain the separator, the last match is always the separator. <br>
+	 * Every block whose data is saved has it, followed by the handler's version and then the data if there is any. <br>
+	 * example "minecraft:double_plant:8_DATA_0.variant=2", "minecraft:double_plant:2_DATA_0"
+	 */
+	public static final String DATA_STRING_SEPARATOR = "_DATA_";
+	/** separates the handler version from the data, the version is a number so the first match is always the separator */
+	public static final String DATA_VERSION_SEPARATOR = ".";
 	
 	
 	// must be defined before AIR, otherwise a null pointer will be thrown
 	private static final DhLogger LOGGER = new DhLoggerBuilder().build();
 	
-	#if MC_VER <= MC_1_7_10
-	public static final ConcurrentHashMap<Integer, BlockStateWrapper> WRAPPER_BY_BLOCK_ID_AND_META = new ConcurrentHashMap<>();
-	#elif MC_VER <= MC_1_12_2
+	#if MC_VER <= MC_1_12_2
 	public static final ConcurrentHashMap<IBlockState, BlockStateWrapper> WRAPPER_BY_BLOCK_STATE = new ConcurrentHashMap<>();
 	#else
     public static final ConcurrentHashMap<BlockState, BlockStateWrapper> WRAPPER_BY_BLOCK_STATE = new ConcurrentHashMap<>();
@@ -198,6 +209,16 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	private final boolean alwaysRasterizeTexture;
 	private final boolean isSolid;
 	private final boolean isFullBlock;
+	#if MC_VER <= MC_1_12_2
+	/** how {@link #resolveRenderState} handles this state, null until it's first needed */
+	@Nullable
+	private volatile ERenderResolve renderResolve = null;
+	#endif
+	#if MC_VER <= MC_1_7_10
+	/** see {@link #hasLocalOnlyBlockStateData}, null until it's first needed */
+	@Nullable
+	private volatile Boolean hasLocalOnlyBlockStateData = null;
+	#endif
 	/** indexed by {@link EDhDirection#faceIndex} */
 	private final boolean[] isFaceFullByFaceIndex = new boolean[6];
 	private final float maxHorizontalModelOffset;
@@ -220,7 +241,11 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	
 	#if MC_VER <= MC_1_7_10
 	public static BlockStateWrapper fromBlockState(IBlockState blockState, ILevelWrapper levelWrapper)
-	{ return fromBlockState(blockState.getBlock(), blockState.getMeta(), levelWrapper); }
+	{
+		// the data is part of the state, IE the type of a double plant's top half
+		String data = (blockState instanceof FakeBlockState) ? ((FakeBlockState) blockState).data : null;
+		return fromBlockState(blockState.getBlock(), blockState.getMeta(), data, levelWrapper);
+	}
 	#endif
 	
 	/**
@@ -308,7 +333,9 @@ public class BlockStateWrapper implements IBlockStateWrapper
 
 	#if MC_VER <= MC_1_7_10
 	// For 1.7.10 more accurate name is fromBlockAndMeta
-	public static BlockStateWrapper fromBlockState(Block block, int meta, ILevelWrapper levelWrapper)
+	public static BlockStateWrapper fromBlockState(Block block, int meta, ILevelWrapper levelWrapper) { return fromBlockState(block, meta, null, levelWrapper); }
+	/** @param data see {@link FakeBlockState#data} */
+	public static BlockStateWrapper fromBlockState(Block block, int meta, @Nullable String data, ILevelWrapper levelWrapper)
 	#elif MC_VER <= MC_1_12_2
 	public static BlockStateWrapper fromBlockState(@Nullable IBlockState blockState, ILevelWrapper levelWrapper)
 	#else
@@ -327,18 +354,12 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		
 		#if MC_VER <= MC_1_7_10
-		FakeBlockState blockState = new FakeBlockState(block, meta);
+		FakeBlockState blockState = new FakeBlockState(block, meta, Block.getIdFromBlock(block), data);
 		#endif
 		
 		// pooling wrappers significantly improves chunk->LOD processing speed
 		// and also reduces GC pressure
-		#if MC_VER <= MC_1_7_10
-		final int blockId = Block.getIdFromBlock(block);
-		final Integer packedIdMeta = FakeBlockState.packIdAndMeta(blockId, meta);
-		BlockStateWrapper existingWrapper = WRAPPER_BY_BLOCK_ID_AND_META.get(packedIdMeta);
-		#else
 		BlockStateWrapper existingWrapper = WRAPPER_BY_BLOCK_STATE.get(blockState);
-		#endif
 		if (existingWrapper != null)
 		{
 			return existingWrapper;
@@ -347,18 +368,10 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		
 		
 		// synchronized so the API event only fires once per block
-		#if MC_VER <= MC_1_7_10
-		synchronized (WRAPPER_BY_BLOCK_ID_AND_META)
-		#else
 		synchronized (WRAPPER_BY_BLOCK_STATE)
-		#endif
 		{
 			// if another thread already finished this block, use that wrapper
-			#if MC_VER <= MC_1_7_10
-			existingWrapper = WRAPPER_BY_BLOCK_ID_AND_META.get(packedIdMeta);
-			#else
 			existingWrapper = WRAPPER_BY_BLOCK_STATE.get(blockState);
-			#endif
 			if (existingWrapper != null)
 			{
 				return existingWrapper;
@@ -373,22 +386,14 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			if (!eventParam.getOverridesSet())
 			{
 				// no API changes needed, use the existing object
-				#if MC_VER <= MC_1_7_10
-				WRAPPER_BY_BLOCK_ID_AND_META.putIfAbsent(packedIdMeta, apiWrapper);
-				#else
 				WRAPPER_BY_BLOCK_STATE.putIfAbsent(blockState, apiWrapper);
-				#endif
 				return apiWrapper;
 			}
 			else
 			{
 				// create a new wrapper using whatever overrides the API user set
 				BlockStateWrapper returnWrapper = new BlockStateWrapper(blockState, levelWrapper, eventParam);
-				#if MC_VER <= MC_1_7_10
-				WRAPPER_BY_BLOCK_ID_AND_META.putIfAbsent(packedIdMeta, returnWrapper);
-				#else
 				WRAPPER_BY_BLOCK_STATE.putIfAbsent(blockState, returnWrapper);
-				#endif
 				return returnWrapper;
 			}
 		}
@@ -721,6 +726,18 @@ public class BlockStateWrapper implements IBlockStateWrapper
 				#if MC_VER <= MC_1_7_10
 				// render type 0 blocks can be smaller than a full cube
 				Block block = this.blockState.getBlock();
+				try
+				{
+					// the bounds are shared by all states (per thread with Angelica),
+					// the block sets them for this state's meta here
+					FakeWorld fakeWorld = new FakeWorld();
+					fakeWorld.update(null, null, 0, 0, 0, (FakeBlockState) this.blockState);
+					block.setBlockBoundsBasedOnState(fakeWorld, 0, 0, 0);
+				}
+				catch (Exception ignore)
+				{
+					// some blocks need a real world or tile entity, they keep their current bounds
+				}
 				this.isFullBlock = block.getRenderType() == 0
 					&& block.getBlockBoundsMinX() == 0 && block.getBlockBoundsMinY() == 0 && block.getBlockBoundsMinZ() == 0
 					&& block.getBlockBoundsMaxX() == 1 && block.getBlockBoundsMaxY() == 1 && block.getBlockBoundsMaxZ() == 1;
@@ -1686,6 +1703,168 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	
 	
 	
+	#if MC_VER <= MC_1_7_10
+	//==================//
+	// block state data //
+	//==================//
+	//region
+	
+	/** 
+	 * If the block's GTNHLib block state data is its own state kept outside its meta (IE a double plant's variant), 
+	 * it's encoded when the chunk is read and saved with the LODs.
+	 */
+	public boolean hasLocalOnlyBlockStateData()
+	{
+		Boolean hasLocalOnlyBlockStateData = this.hasLocalOnlyBlockStateData;
+		if (hasLocalOnlyBlockStateData == null)
+		{
+			hasLocalOnlyBlockStateData = (this.blockState != null) && BlockStateDataResolver.isLocalOnly(this.blockState.getBlock());
+			this.hasLocalOnlyBlockStateData = hasLocalOnlyBlockStateData;
+		}
+		return hasLocalOnlyBlockStateData;
+	}
+	
+	//endregion
+	#endif
+	
+	#if MC_VER <= MC_1_12_2
+	//========================//
+	// render state resolving //
+	//========================//
+	//region
+	
+	@Override
+	public boolean needsRenderResolve() { return this.getRenderResolve() == ERenderResolve.NEEDS_NEIGHBORS; }
+	
+	#if MC_VER <= MC_1_7_10
+	/** 
+	 * The GTNHLib block state data, with the neighbors from the LOD data. <br>
+	 * Stored states never have data, the same data always gives the same wrapper and with it the same model.
+	 */
+	@Override
+	public IBlockStateWrapper resolveRenderState(ILodBlockLookup lookup, int blockX, int blockY, int blockZ)
+	{
+		if (this.getRenderResolve() != ERenderResolve.NEEDS_NEIGHBORS)
+		{
+			return this;
+		}
+		
+		FakeBlockState fakeBlockState = (FakeBlockState) this.blockState;
+		LodBlockAccess blockAccess = new LodBlockAccess(lookup, fakeBlockState, blockX, blockY, blockZ);
+		String data = BlockStateDataResolver.encode(blockAccess, blockX, blockY, blockZ, fakeBlockState.block, fakeBlockState.meta);
+		
+		// only this position is missing neighbors, IE diagonally across a section corner
+		if (blockAccess.readMissing)
+		{
+			return this;
+		}
+		
+		return fromBlockState(fakeBlockState.block, fakeBlockState.meta, data, lookup.getLevelWrapper());
+	}
+	#else
+	/** getActualState again, with the neighbors from the LOD data instead of the chunk the state was stored from */
+	@Override
+	public IBlockStateWrapper resolveRenderState(ILodBlockLookup lookup, int blockX, int blockY, int blockZ)
+	{
+		if (this.getRenderResolve() != ERenderResolve.NEEDS_NEIGHBORS)
+		{
+			return this;
+		}
+		
+		BlockPos pos = new BlockPos(blockX, blockY, blockZ);
+		LodBlockAccess blockAccess = new LodBlockAccess(lookup, this.blockState, blockX, blockY, blockZ);
+		IBlockState renderState;
+		try
+		{
+			renderState = this.blockState.getActualState(blockAccess, pos);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warn("getActualState failed for ["+this.serialString+"] with LOD data, its stored state is used instead. Error: ["+e.getMessage()+"].", e);
+			this.renderResolve = ERenderResolve.NEEDS_TE;
+			return this;
+		}
+		
+		// the probe didn't see it, IE a tile entity that's only read for some neighbors
+		if (blockAccess.readTileEntity)
+		{
+			this.renderResolve = ERenderResolve.NEEDS_TE;
+			return this;
+		}
+		
+		// only this position is missing neighbors, IE diagonally across a section corner
+		if (blockAccess.readMissing)
+		{
+			return this;
+		}
+		
+		return fromBlockState(renderState, lookup.getLevelWrapper());
+	}
+	#endif
+	
+	private ERenderResolve getRenderResolve()
+	{
+		ERenderResolve renderResolve = this.renderResolve;
+		if (renderResolve == null)
+		{
+			renderResolve = this.probeRenderResolve();
+			this.renderResolve = renderResolve;
+		}
+		return renderResolve;
+	}
+	#if MC_VER <= MC_1_7_10
+	/** Only blocks whose GTNHLib block state data depends on their neighbors are resolved */
+	private ERenderResolve probeRenderResolve()
+	{
+		if (this.blockState == null)
+		{
+			return ERenderResolve.NONE;
+		}
+		
+		return BlockStateDataResolver.isNeighborDependent(this.blockState.getBlock()) ? ERenderResolve.NEEDS_NEIGHBORS : ERenderResolve.NONE;
+	}
+	#else
+	/** 
+	 * Calls getActualState once with only air around the block to see what it reads. <br>
+	 * Whether vanilla blocks read their neighbors only depends on their own state, never on what a read returned.
+	 */
+	private ERenderResolve probeRenderResolve()
+	{
+		if (this.blockState == null)
+		{
+			return ERenderResolve.NONE;
+		}
+		
+		LodBlockAccess probe = new LodBlockAccess(null, this.blockState, 0, 0, 0);
+		try
+		{
+			this.blockState.getActualState(probe, BlockPos.ORIGIN);
+		}
+		catch (Exception e)
+		{
+			return ERenderResolve.NEEDS_TE;
+		}
+		
+		if (probe.readTileEntity)
+		{
+			return ERenderResolve.NEEDS_TE;
+		}
+		return probe.readNeighbor ? ERenderResolve.NEEDS_NEIGHBORS : ERenderResolve.NONE;
+	}
+	#endif
+	
+	private enum ERenderResolve
+	{
+		/** The block is independent */
+		NONE,
+		/** The block needs neighboring blocks, supplied by the LOD data */
+		NEEDS_NEIGHBORS,
+		/** The block needs more than the LOD data has (like tile entities) */
+		NEEDS_TE,
+	}
+	
+	//endregion
+	#endif
 	//=======================//
 	// serialization methods //
 	//=======================//
@@ -1707,6 +1886,17 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		if (blockState.getMeta() != 0)
 		{
 			serialString += RESOURCE_LOCATION_SEPARATOR + blockState.getMeta();
+		}
+		// so wrappers with different data aren't equal,
+		// the version is always saved for saved data so states from before the handler existed can be told apart
+		String data = (blockState instanceof FakeBlockState) ? ((FakeBlockState) blockState).data : null;
+		if (data != null || BlockStateDataResolver.isLocalOnly(blockState.getBlock()))
+		{
+			serialString += DATA_STRING_SEPARATOR + BlockStateDataResolver.getVersion(blockState.getBlock());
+			if (data != null)
+			{
+				serialString += DATA_VERSION_SEPARATOR + data;
+			}
 		}
 		return serialString;
 		#else
@@ -1765,6 +1955,49 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 	}
 	
+	/** 
+	 * @return true if the string was saved with a different data handler version than the block's current one, 
+	 *         or the block gained or lost its saved data since then
+	 */
+	public static boolean isSerialOutdated(String resourceStateString, ILevelWrapper levelWrapper)
+	{
+		#if MC_VER <= MC_1_7_10
+		BlockStateWrapper wrapper = deserializeOrDefault(resourceStateString, levelWrapper);
+		if (wrapper.blockState == null)
+		{
+			// air or unknown blocks don't have data
+			return false;
+		}
+		
+		Block block = wrapper.blockState.getBlock();
+		int dataSeparatorIndex = resourceStateString.lastIndexOf(DATA_STRING_SEPARATOR);
+		if (!BlockStateDataResolver.isLocalOnly(block))
+		{
+			// saved by a handler that's gone
+			return dataSeparatorIndex != -1;
+		}
+		if (dataSeparatorIndex == -1)
+		{
+			// saved before the handler existed
+			return true;
+		}
+		
+		String versionAndData = resourceStateString.substring(dataSeparatorIndex + DATA_STRING_SEPARATOR.length());
+		int versionSeparatorIndex = versionAndData.indexOf(DATA_VERSION_SEPARATOR);
+		String versionString = (versionSeparatorIndex != -1) ? versionAndData.substring(0, versionSeparatorIndex) : versionAndData;
+		try
+		{
+			return Integer.parseInt(versionString) != BlockStateDataResolver.getVersion(block);
+		}
+		catch (NumberFormatException e)
+		{
+			return true;
+		}
+		#else
+		return false;
+		#endif
+	}
+	
 	/** will only work if a level is currently loaded */
 	public static BlockStateWrapper deserialize(String resourceStateString, ILevelWrapper levelWrapper) throws IOException
 	{
@@ -1790,6 +2023,21 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		try
 		{
 			#if MC_VER <= MC_1_7_10
+			String data = null;
+			int dataSeparatorIndex = resourceStateString.lastIndexOf(DATA_STRING_SEPARATOR);
+			if (dataSeparatorIndex != -1)
+			{
+				// the version is only needed by isSerialOutdated
+				String versionAndData = resourceStateString.substring(dataSeparatorIndex + DATA_STRING_SEPARATOR.length());
+				int versionSeparatorIndex = versionAndData.indexOf(DATA_VERSION_SEPARATOR);
+				if (versionSeparatorIndex != -1)
+				{
+					String dataString = versionAndData.substring(versionSeparatorIndex + DATA_VERSION_SEPARATOR.length());
+					data = dataString.isEmpty() ? null : dataString;
+				}
+				resourceStateString = resourceStateString.substring(0, dataSeparatorIndex);
+			}
+			
 			String metaString = null; // will be null if no meta was included
 			int stateSeparatorIndex = resourceStateString.indexOf(STATE_STRING_SEPARATOR);
 			if (stateSeparatorIndex != -1)
@@ -1818,7 +2066,13 @@ public class BlockStateWrapper implements IBlockStateWrapper
 					meta = Integer.parseInt(metaString);
 				}
 				
-				foundWrapper = fromBlockState(block, meta, levelWrapper);
+				// only data that's the block's own state is saved, without a handler it can't be decoded
+				if (!BlockStateDataResolver.isLocalOnly(block))
+				{
+					data = null;
+				}
+				
+				foundWrapper = fromBlockState(block, meta, data, levelWrapper);
 				return foundWrapper;
 			}
 			catch (Exception e)
@@ -1979,20 +2233,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			
 			if (foundWrapper != AIR)
 			{
-				#if MC_VER <= MC_1_7_10
-				
-				int blockIdAndMeta = 0;
-				// should always be true (the only exception should be air), 
-				// but just in case
-				if (foundWrapper.blockState instanceof FakeBlockState)
-				{
-					blockIdAndMeta = ((FakeBlockState)foundWrapper.blockState).getIdAndMeta();
-				}
-				
-				WRAPPER_BY_BLOCK_ID_AND_META.putIfAbsent(blockIdAndMeta, foundWrapper);
-				#else
 				WRAPPER_BY_BLOCK_STATE.putIfAbsent(foundWrapper.blockState, foundWrapper);
-				#endif
 			}
 		}
 	}

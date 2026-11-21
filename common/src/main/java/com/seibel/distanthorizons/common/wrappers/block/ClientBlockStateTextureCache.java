@@ -27,6 +27,7 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockCo
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockModelOverrideEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTextureOverrideEvent;
 import com.seibel.distanthorizons.api.objects.render.DhApiModelQuad;
+import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.DhBlockModelQuad;
@@ -54,6 +55,13 @@ import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 
 #if MC_VER <= MC_1_7_10
+import com.seibel.distanthorizons.common.backports.FakeBlockState;
+import com.seibel.distanthorizons.common.backports.FakeWorld;
+import com.seibel.distanthorizons.common.wrappers.modAccessor.IGtnhLibCommonAccessor;
+import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
+import net.minecraft.block.Block;
+import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraftforge.common.util.ForgeDirection;
 #elif MC_VER < MC_1_21_5
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -126,6 +134,10 @@ public class ClientBlockStateTextureCache
 	
 	private static final ConcurrentHashMap<BlockStateWrapper, BlockFaceTexture[]> TEXTURES_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<BlockStateWrapper, DhBlockModelQuad[]> MODELS_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
+	#if MC_VER <= MC_1_7_10
+	/** indexed by {@link EDhDirection#faceIndex}, only blocks with model quads are in here */
+	private static final ConcurrentHashMap<BlockStateWrapper, TextureAtlasSprite[]> MODEL_SPRITES_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
+	#endif
 	
 	/** 
 	 * can be enabled to make sure the textures are being parsed
@@ -201,7 +213,33 @@ public class ClientBlockStateTextureCache
 	{
 		TEXTURES_BY_BLOCK_WRAPPER.clear();
 		MODELS_BY_BLOCK_WRAPPER.clear();
+		#if MC_VER <= MC_1_7_10
+		MODEL_SPRITES_BY_BLOCK_WRAPPER.clear();
+		#endif
 	}
+	
+	#if MC_VER <= MC_1_7_10
+	/**
+	 * The sprite the block's model shows on the given side. <br>
+	 * Unlike {@link Block#getIcon(int, int)} the model sees the block's surroundings,
+	 * IE double plant tops get the type of their lower half. <br>
+	 *
+	 * @return null if the block isn't drawn with its model
+	 */
+	@Nullable
+	public static TextureAtlasSprite getModelSprite(BlockStateWrapper blockStateWrapper, EDhDirection direction)
+	{
+		if (!Config.Client.Advanced.Graphics.Model.enableBlockModels.get()
+			|| !BlockRenderRegistry.usesModel(blockStateWrapper))
+		{
+			return null;
+		}
+		
+		// usesModel baked the model
+		TextureAtlasSprite[] spriteByFaceIndex = MODEL_SPRITES_BY_BLOCK_WRAPPER.get(blockStateWrapper);
+		return (spriteByFaceIndex != null) ? spriteByFaceIndex[direction.faceIndex] : null;
+	}
+	#endif
 	
 	//endregion
 	
@@ -229,6 +267,7 @@ public class ClientBlockStateTextureCache
 			addModelQuad(decodeQuad(bakedQuad, null), cullDirection, !quadsWithoutAmbientOcclusion.contains(bakedQuad), modelQuads, textureBySprite);
 		}
 	}
+	#endif
 	
 	private static void addModelQuad(
 		QuadGeometry geometry, @Nullable EDhDirection cullDirection, boolean ambientOcclusion,
@@ -301,13 +340,89 @@ public class ClientBlockStateTextureCache
 		}
 		return BlockFaceTexture.createTexture(TEXTURE_WIDTH_AND_HEIGHT, TEXTURE_WIDTH_AND_HEIGHT, pixels);
 	}
-	#endif
 	
 	private static DhBlockModelQuad[] bakeModel(BlockStateWrapper blockStateWrapper)
 	{
 		#if MC_VER <= MC_1_7_10
-		// 1.7.10 doesn't have baked quads
-		return new DhBlockModelQuad[0];
+		if (blockStateWrapper.isAir()
+			|| blockStateWrapper.isLiquid())
+		{
+			return new DhBlockModelQuad[0];
+		}
+		
+		// 1.7.10 doesn't have baked quads,
+		// GTNHLib lets us capture what RenderBlocks draws off the render thread
+		IGtnhLibCommonAccessor gtnhLib = ModAccessorInjector.INSTANCE.get(IGtnhLibCommonAccessor.class);
+		Block block = blockStateWrapper.blockState.getBlock();
+		int renderType = block.getRenderType();
+		// full blocks are drawn as boxes
+		if (gtnhLib == null
+			|| blockStateWrapper.isFullBlock()
+			|| renderType < 0)
+		{
+			return new DhBlockModelQuad[0];
+		}
+		
+		ArrayList<DhBlockModelQuad> modelQuads = new ArrayList<>();
+		HashMap<TextureAtlasSprite, BlockFaceTexture> textureBySprite = new HashMap<>();
+		try
+		{
+			// render state like block bounds is shared, so all baking is done in a lock
+			BAKE_LOCK.lock();
+			
+			// the block at the origin, neighbors are air unless its data adds some
+			IBlockAccess world = BlockStateDataResolver.getWorld(
+				new FakeWorld(), MC.theWorld, BiomeGenBase.plains,
+				0, 0, 0,
+				(FakeBlockState) blockStateWrapper.blockState);
+			
+			// the sprite of each added quad, fully clear quads aren't added and never show
+			ArrayList<TextureAtlasSprite> spriteByQuad = new ArrayList<>();
+			gtnhLib.captureQuads(world, 0, 0, 0, block, (geometry, cullDirection) ->
+			{
+				int quadCount = modelQuads.size();
+				// vanilla only uses ambient occlusion where it also shades
+				boolean ambientOcclusion = (geometry.shadeDirectionOverride == null);
+				addModelQuad(geometry, cullDirection, ambientOcclusion, modelQuads, textureBySprite);
+				if (modelQuads.size() != quadCount)
+				{
+					spriteByQuad.add(geometry.sprite);
+				}
+			});
+			
+			// each side shows the first quad lying on it, otherwise the model's first quad
+			if (!spriteByQuad.isEmpty())
+			{
+				TextureAtlasSprite[] spriteByFaceIndex = new TextureAtlasSprite[FACE_DIRECTIONS.length];
+				for (int quadIndex = 0; quadIndex < modelQuads.size(); quadIndex++)
+				{
+					EDhDirection cullDirection = modelQuads.get(quadIndex).cullDirection;
+					if (cullDirection != null && spriteByFaceIndex[cullDirection.faceIndex] == null)
+					{
+						spriteByFaceIndex[cullDirection.faceIndex] = spriteByQuad.get(quadIndex);
+					}
+				}
+				for (int faceIndex = 0; faceIndex < spriteByFaceIndex.length; faceIndex++)
+				{
+					if (spriteByFaceIndex[faceIndex] == null)
+					{
+						spriteByFaceIndex[faceIndex] = spriteByQuad.get(0);
+					}
+				}
+				MODEL_SPRITES_BY_BLOCK_WRAPPER.put(blockStateWrapper, spriteByFaceIndex);
+			}
+		}
+		catch (Exception bakeError)
+		{
+			LOGGER.warn("Failed to read the model for block ["+blockStateWrapper.getSerialString()+"], error: ["+bakeError.getMessage()+"], block will render as a box.", bakeError);
+			modelQuads.clear();
+		}
+		finally
+		{
+			BAKE_LOCK.unlock();
+		}
+		
+		return modelQuads.toArray(new DhBlockModelQuad[0]);
 		#else
 		if (BlockStateWrapper.isAir(blockStateWrapper.blockState)
 			|| (blockStateWrapper.isLiquid() && !blockStateWrapper.isWaterlogged()))
@@ -530,7 +645,11 @@ public class ClientBlockStateTextureCache
 	private static BlockFaceTexture bakeFaceTexture(BlockStateWrapper blockStateWrapper, EDhDirection dhDirection)
 	{
 		#if MC_VER <= MC_1_7_10
-		TextureAtlasSprite sprite = getFaceSprite(blockStateWrapper, dhDirection);
+		TextureAtlasSprite sprite = getModelSprite(blockStateWrapper, dhDirection);
+		if (sprite == null)
+		{
+			sprite = getFaceSprite(blockStateWrapper, dhDirection);
+		}
 		return bakeSpriteTexture(sprite);
 		
 		#else
@@ -983,59 +1102,9 @@ public class ClientBlockStateTextureCache
 		geometry.faceVByVertex[vertexIndex] = faceV;
 		geometry.depthByVertex[vertexIndex] = depth;
 	}
-	
-	//================//
-	// helper classes //
-	//================//
-	//region
-	
-	/**
-	 * A Minecraft {@link BakedQuad} converted into the coordinate 
-	 * space of the face it's baked onto.
-	 */
-	private static class QuadGeometry
-	{
-		/** 
-		 * In the range [0,1] with (0,0) being the face's top left corner. <br>
-		 * U increases to the right. <br>
-		 */
-		public final float[] faceUByVertex = new float[4];
-		/**
-		 * In the range [0,1] with (0,0) being the face's top left corner. <br>
-		 * V increases downward.
-		 */
-		public final float[] faceVByVertex = new float[4];
-		
-		/** 
-		 * Increases as it moves towards the viewer. <br>
-		 * A depth of 1 
-		 */
-		public final float[] depthByVertex = new float[4];
-		
-		/** sprite local texture coordinates in the range [0,1] */
-		public final float[] spriteUByVertex = new float[4];
-		/** sprite local texture coordinates in the range [0,1] */
-		public final float[] spriteVByVertex = new float[4];
-		
-		/** block space positions in the range [0,1] */
-		public final float[] xByVertex = new float[4];
-		public final float[] yByVertex = new float[4];
-		public final float[] zByVertex = new float[4];
-		
-		
-		public TextureAtlasSprite sprite;
-		public boolean tinted;
-		@Nullable
-		public EDhDirection shadeDirectionOverride;
-		
-		
-		public double getAverageDepth()
-		{ return (this.depthByVertex[0] + this.depthByVertex[1] + this.depthByVertex[2] + this.depthByVertex[3]) / 4.0; }
-	}
-	
-	//endregion
-	//endregion
 	#endif
+	
+	//endregion
 	
 	
 	

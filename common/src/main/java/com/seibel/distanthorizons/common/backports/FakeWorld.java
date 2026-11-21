@@ -125,7 +125,7 @@ public class FakeWorld implements IBlockAccess
 	public boolean extendedLevelsInChunkCache() { return this.realWorld.extendedLevelsInChunkCache(); }
 
 	@Override
-	public boolean isSideSolid(int x, int y, int z, ForgeDirection side, boolean _default) { throw new UnsupportedOperationException("isSideSolid() isn't implemented"); }
+	public boolean isSideSolid(int x, int y, int z, ForgeDirection side, boolean _default) { return this.getBlock(x, y, z).isSideSolid(this, x, y, z, side); }
 	
 	//endregion
 	

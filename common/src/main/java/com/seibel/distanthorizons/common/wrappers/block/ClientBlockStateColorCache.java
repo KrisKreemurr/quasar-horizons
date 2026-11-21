@@ -37,6 +37,7 @@ import net.minecraft.block.BlockBush;
 import net.minecraft.block.BlockFlower;
 import net.minecraft.block.BlockGrass;
 import net.minecraft.block.BlockLeavesBase;
+import net.minecraft.block.BlockRedstoneWire;
 import net.minecraft.init.Blocks;
 import net.minecraft.world.IBlockAccess;
 import net.minecraftforge.common.IShearable;
@@ -280,8 +281,13 @@ public class ClientBlockStateColorCache
 			RESOLVE_LOCK.lock();
 			FakeBlockState blockState = (FakeBlockState)this.blockState; 
 
-			TextureAtlasSprite sprite = TextureAtlasSpriteWrapper.resolveFaceSprite(
-				blockState, ForgeDirection.UP.ordinal());
+			// the model sees the block's surroundings, IE double plant tops get the type of their lower half
+			TextureAtlasSprite sprite = ClientBlockStateTextureCache.getModelSprite(this.blockStateWrapper, EDhDirection.UP);
+			if (sprite == null)
+			{
+				sprite = TextureAtlasSpriteWrapper.resolveFaceSprite(
+					blockState, ForgeDirection.UP.ordinal());
+			}
 			if (sprite != null)
 			{
 				this.baseColor = calculateColorFromTexture(
@@ -316,6 +322,12 @@ public class ClientBlockStateColorCache
 			
 			// Necessary for the Lord of the Rings (LOTR) mod
 			if (blockState.block instanceof IShearable)
+			{
+				this.needPostTinting = true;
+			}
+			
+			// only its colorMultiplier is red, the texture is gray
+			if (blockState.block instanceof BlockRedstoneWire)
 			{
 				this.needPostTinting = true;
 			}
@@ -761,10 +773,12 @@ public class ClientBlockStateColorCache
 				IBlockAccess realLevel = (IBlockAccess) this.clientLevelWrapper.getWrappedMcObject();
 				FakeBlockState fakeBlockState = (FakeBlockState)this.blockState;
 				
-				FakeWorld fakeWorld = FAKE_WORLD_REF.get();
-				fakeWorld.update(realLevel, biomeWrapper.biome, blockPos.getX(), blockPos.getY(), blockPos.getZ(), fakeBlockState);
+				IBlockAccess world = BlockStateDataResolver.getWorld(
+					FAKE_WORLD_REF.get(), realLevel, biomeWrapper.biome,
+					blockPos.getX(), blockPos.getY(), blockPos.getZ(),
+					fakeBlockState);
 				
-				tintColor = fakeBlockState.block.colorMultiplier(fakeWorld, blockPos.getX(), blockPos.getY(), blockPos.getZ());
+				tintColor = fakeBlockState.block.colorMultiplier(world, blockPos.getX(), blockPos.getY(), blockPos.getZ());
 				#elif MC_VER <= MC_1_12_2
 				// 1.12.2 doesn't have BlockAndTintGetter -> get tintColor from biome
 				WorldClient world = (WorldClient) this.clientLevelWrapper.getWrappedMcObject();
