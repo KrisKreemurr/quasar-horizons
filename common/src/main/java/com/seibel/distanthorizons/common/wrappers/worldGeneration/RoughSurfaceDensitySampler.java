@@ -24,6 +24,11 @@ package com.seibel.distanthorizons.common.wrappers.worldGeneration;
 public class RoughSurfaceDensitySampler { }
 #else
 
+import com.seibel.distanthorizons.core.config.Config;
+import com.seibel.distanthorizons.core.logging.DhLogger;
+import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 #if MC_VER <= MC_26_2_0
 import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -57,6 +62,21 @@ import java.util.Objects;
 
 public final class RoughSurfaceDensitySampler
 {
+	public static final DhLogger LOGGER = new DhLoggerBuilder()
+		.name("LOD World Gen - Rough Surface Sampler")
+		.fileLevelConfig(Config.Common.Logging.logWorldGenEventToFile)
+		.build();
+	
+	private static final AtomicBoolean UNCACHED_FALLBACK_ERROR_LOGGED_REF = new AtomicBoolean(false);
+	
+	/** 
+	 * this is necessary when mods like C2ME are present
+	 * that change the underlying noise functions and how they're handled.
+	 */
+	private boolean useUncachedFallback = false;
+	
+	
+	
 	//========================//
 	// constructors/variables //
 	//========================//
@@ -97,16 +117,37 @@ public final class RoughSurfaceDensitySampler
 	
 	public void createThreadLocal()
 	{
+		// don't try creating a local cache if it failed before
+		if (this.useUncachedFallback)
+		{
+			return;
+		}
+		
+		
+		
 		if (this.cacheThreadLocal.get() != null)
 		{
 			throw new IllegalStateException("Rough surface sampling is already active");
 		}
 		
-		#if MC_VER <= MC_26_2_0
-		this.cacheThreadLocal.set(new DhCacheContainer(this.density.mapAll(new DhCacheVisitor())));
-		#else
-		this.cacheThreadLocal.set(new DhCacheContainer(this.cacheCount, this.densitySampler));
-		#endif
+		try
+		{
+			#if MC_VER <= MC_26_2_0
+			this.cacheThreadLocal.set(new DhCacheContainer(this.density.mapAll(new DhCacheVisitor())));
+			#else
+			this.cacheThreadLocal.set(new DhCacheContainer(this.cacheCount, this.densitySampler));
+			#endif
+		}
+		catch (Exception e)
+		{
+			// this will run on multiple threads, only log the warning once
+			if (!UNCACHED_FALLBACK_ERROR_LOGGED_REF.getAndSet(true))
+			{
+				LOGGER.warn("Failed to create cached rough sampler, falling back to slower uncached version. Message: [" + e.getMessage() + "].", e);
+			}
+			
+			this.useUncachedFallback = true;
+		}
 	}
 	
 	public void removeThreadLocal() { this.cacheThreadLocal.remove(); }
@@ -123,6 +164,34 @@ public final class RoughSurfaceDensitySampler
 	
 	public double sampleValue(int blockX, int blockY, int blockZ)
 	{
+		if (this.useUncachedFallback)
+		{
+			#if MC_VER <= MC_26_2_0
+			return this.density
+				.compute(new DensityFunction.SinglePointContext(blockX, blockY, blockZ));
+			#else
+			// no fallback implemented yet
+			// James is hoping that it won't be necessary, but if it is, take
+			// a look at the code below for an example of what we'd probably need
+			
+			//ContextMap samplerUserFields = ContextMap.builder()
+			//	.set(Beardifier.CONTEXT_KEY, Beardifier.EMPTY)
+			//	.build();
+			//
+			//DensitySamplerSet densitySamplers = this.randomState.samplersWithContext(
+			//	SamplerContext.builder()
+			//		.setUserFields(samplerUserFields)
+			//		.build()
+			//);
+			//
+			//DensityFunction finalDensityFunc = this.randomState.router.finalDensity();
+			//this.density = densitySamplers.get(finalDensityFunc);
+			
+			#endif
+		}
+		
+		
+		
 		DhCacheContainer cacheContainer = this.cacheThreadLocal.get();
 		if (cacheContainer == null)
 		{
