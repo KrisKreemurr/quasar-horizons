@@ -120,9 +120,12 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	/** 
 	 * Separates the 1.7.10 block state data, see {@link FakeBlockState#data}. <br>
 	 * The data itself is lowercase so it can't contain the separator, the last match is always the separator. <br>
-	 * example "minecraft:double_plant:8_DATA_variant=2"
+	 * Every block whose data is saved has it, followed by the handler's version and then the data if there is any. <br>
+	 * example "minecraft:double_plant:8_DATA_0.variant=2", "minecraft:double_plant:2_DATA_0"
 	 */
 	public static final String DATA_STRING_SEPARATOR = "_DATA_";
+	/** separates the handler version from the data, the version is a number so the first match is always the separator */
+	public static final String DATA_VERSION_SEPARATOR = ".";
 	
 	
 	// must be defined before AIR, otherwise a null pointer will be thrown
@@ -1880,10 +1883,16 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		{
 			serialString += RESOURCE_LOCATION_SEPARATOR + blockState.getMeta();
 		}
-		// so wrappers with different data aren't equal
-		if (blockState instanceof FakeBlockState && ((FakeBlockState) blockState).data != null)
+		// so wrappers with different data aren't equal,
+		// the version is always saved for saved data so states from before the handler existed can be told apart
+		String data = (blockState instanceof FakeBlockState) ? ((FakeBlockState) blockState).data : null;
+		if (data != null || BlockStateDataResolver.isLocalOnly(blockState.getBlock()))
 		{
-			serialString += DATA_STRING_SEPARATOR + ((FakeBlockState) blockState).data;
+			serialString += DATA_STRING_SEPARATOR + BlockStateDataResolver.getVersion(blockState.getBlock());
+			if (data != null)
+			{
+				serialString += DATA_VERSION_SEPARATOR + data;
+			}
 		}
 		return serialString;
 		#else
@@ -1942,6 +1951,49 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 	}
 	
+	/** 
+	 * @return true if the string was saved with a different data handler version than the block's current one, 
+	 *         or the block gained or lost its saved data since then
+	 */
+	public static boolean isSerialOutdated(String resourceStateString, ILevelWrapper levelWrapper)
+	{
+		#if MC_VER <= MC_1_7_10
+		BlockStateWrapper wrapper = deserializeOrDefault(resourceStateString, levelWrapper);
+		if (wrapper.blockState == null)
+		{
+			// air or unknown blocks don't have data
+			return false;
+		}
+		
+		Block block = wrapper.blockState.getBlock();
+		int dataSeparatorIndex = resourceStateString.lastIndexOf(DATA_STRING_SEPARATOR);
+		if (!BlockStateDataResolver.isLocalOnly(block))
+		{
+			// saved by a handler that's gone
+			return dataSeparatorIndex != -1;
+		}
+		if (dataSeparatorIndex == -1)
+		{
+			// saved before the handler existed
+			return true;
+		}
+		
+		String versionAndData = resourceStateString.substring(dataSeparatorIndex + DATA_STRING_SEPARATOR.length());
+		int versionSeparatorIndex = versionAndData.indexOf(DATA_VERSION_SEPARATOR);
+		String versionString = (versionSeparatorIndex != -1) ? versionAndData.substring(0, versionSeparatorIndex) : versionAndData;
+		try
+		{
+			return Integer.parseInt(versionString) != BlockStateDataResolver.getVersion(block);
+		}
+		catch (NumberFormatException e)
+		{
+			return true;
+		}
+		#else
+		return false;
+		#endif
+	}
+	
 	/** will only work if a level is currently loaded */
 	public static BlockStateWrapper deserialize(String resourceStateString, ILevelWrapper levelWrapper) throws IOException
 	{
@@ -1971,7 +2023,14 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			int dataSeparatorIndex = resourceStateString.lastIndexOf(DATA_STRING_SEPARATOR);
 			if (dataSeparatorIndex != -1)
 			{
-				data = resourceStateString.substring(dataSeparatorIndex + DATA_STRING_SEPARATOR.length());
+				// the version is only needed by isSerialOutdated
+				String versionAndData = resourceStateString.substring(dataSeparatorIndex + DATA_STRING_SEPARATOR.length());
+				int versionSeparatorIndex = versionAndData.indexOf(DATA_VERSION_SEPARATOR);
+				if (versionSeparatorIndex != -1)
+				{
+					String dataString = versionAndData.substring(versionSeparatorIndex + DATA_VERSION_SEPARATOR.length());
+					data = dataString.isEmpty() ? null : dataString;
+				}
 				resourceStateString = resourceStateString.substring(0, dataSeparatorIndex);
 			}
 			

@@ -157,6 +157,8 @@ public class WrapperFactory implements IWrapperFactory
 	@Override
 	public IBlockStateWrapper deserializeBlockStateWrapper(String str, ILevelWrapper levelWrapper) throws IOException { return BlockStateWrapper.deserialize(str, levelWrapper); }
 	@Override
+	public boolean isBlockStateSerialOutdated(String str, ILevelWrapper levelWrapper) { return BlockStateWrapper.isSerialOutdated(str, levelWrapper); }
+	@Override
 	public IBlockStateWrapper getAirBlockStateWrapper() { return BlockStateWrapper.AIR; }
 	@Override 
 	public IBlockStateWrapper getWaterBlockStateWrapper(ILevelWrapper levelWrapper) { return BlockStateWrapper.getWaterBlockStateWrapper(levelWrapper); }

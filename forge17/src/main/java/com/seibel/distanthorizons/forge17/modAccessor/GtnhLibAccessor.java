@@ -48,6 +48,13 @@ public class GtnhLibAccessor implements IGtnhLibCommonAccessor
 	}
 	
 	@Override
+	public int getBlockStateDataVersion(Block block)
+	{
+		BlockStateDataHandler handler = BlockStateDataRegistry.getHandler(block);
+		return (handler != null) ? handler.getVersion() : 0;
+	}
+	
+	@Override
 	@Nullable
 	public String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta)
 	{

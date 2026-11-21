@@ -56,6 +56,9 @@ public interface IGtnhLibCommonAccessor extends IModAccessor
 	 */
 	boolean isBlockStateDataLocalOnly(Block block);
 	
+	/** @return the version of the block's GTNHLib block state data handler, saved with its data, 0 without one */
+	int getBlockStateDataVersion(Block block);
+	
 	/** @return the block's data, null for none or if its handler failed */
 	@Nullable
 	String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta);

@@ -43,6 +43,13 @@ public class BlockStateDataResolver
 		return gtnhLib != null && gtnhLib.isBlockStateDataLocalOnly(block);
 	}
 	
+	/** @return the version of the block's handler, 0 without one */
+	public static int getVersion(Block block)
+	{
+		IGtnhLibCommonAccessor gtnhLib = ModAccessorInjector.INSTANCE.get(IGtnhLibCommonAccessor.class);
+		return (gtnhLib != null) ? gtnhLib.getBlockStateDataVersion(block) : 0;
+	}
+	
 	/** @return true if the block's data depends on its neighbors (IE fence connections) */
 	public static boolean isNeighborDependent(Block block)
 	{
