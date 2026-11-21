@@ -40,6 +40,8 @@ import com.seibel.distanthorizons.common.backports.FakeBlockState;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import com.seibel.distanthorizons.common.wrappers.block.BlockStateDataResolver;
 import com.seibel.distanthorizons.common.wrappers.block.ChunkBlockAccess;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.ChunkPosition;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.math.BlockPos;
@@ -146,6 +148,8 @@ public class ChunkWrapper implements IChunkWrapper
 	
 	#if MC_VER <= MC_1_7_10
 	private final BiomeGenBase[] biomeList;
+	/** copied when the wrapper is created, the chunk's own map is changed on the server thread */
+	private final HashMap<ChunkPosition, TileEntity> tileEntityByPos;
 	#endif
 	
 	
@@ -172,6 +176,7 @@ public class ChunkWrapper implements IChunkWrapper
 		#if MC_VER <= MC_1_7_10
 		this.chunkPos = new DhChunkPos(chunk.xPosition, chunk.zPosition);
 		this.biomeList = fillBiomeMap(chunk);
+		this.tileEntityByPos = new HashMap<>(chunk.chunkTileEntityMap);
 		#elif MC_VER <= MC_1_21_11
 		this.chunkPos = new DhChunkPos(chunk.getPos().x, chunk.getPos().z);
 		#else
@@ -196,6 +201,7 @@ public class ChunkWrapper implements IChunkWrapper
         
 		#if MC_VER <= MC_1_7_10
 		this.biomeList = that.biomeList;
+		this.tileEntityByPos = that.tileEntityByPos;
         #else
         this.chunkCache = that.chunkCache;
         #endif
@@ -672,7 +678,7 @@ public class ChunkWrapper implements IChunkWrapper
 	
 	#if MC_VER <= MC_1_7_10
 	/** 
-	 * Adds the data of blocks whose data is their own state (IE a double plant's variant in its lower half),
+	 * Adds the data of blocks whose data is their own state (IE a double plant's variant in its lower half or a flower pot's plant),
 	 * it's read from the chunk and saved with the LODs. <br>
 	 * Data depending on the block's surroundings is only added when rendering.
 	 */
@@ -686,7 +692,7 @@ public class ChunkWrapper implements IChunkWrapper
 		FakeBlockState blockState = (FakeBlockState) wrapper.blockState;
 		int blockX = this.chunkPos.getMinBlockX() + relX;
 		int blockZ = this.chunkPos.getMinBlockZ() + relZ;
-		String data = BlockStateDataResolver.encode(new ChunkBlockAccess(this.chunk), blockX, relY, blockZ, blockState.block, blockState.meta);
+		String data = BlockStateDataResolver.encode(new ChunkBlockAccess(this.chunk, this.tileEntityByPos), blockX, relY, blockZ, blockState.block, blockState.meta);
 		return BlockStateWrapper.fromBlockState(blockState.block, blockState.meta, data, this.wrappedLevel);
 	}
 	#endif

@@ -24,30 +24,37 @@ package com.seibel.distanthorizons.common.wrappers.block;
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.ChunkPosition;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.common.util.ForgeDirection;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Map;
+
 /**
  * The world GTNHLib's block state data encoding sees when a chunk is read,
  * for data that's the block's own state (IE a double plant's variant in its lower half). <br>
- * Only contains the chunk, everything outside of it is air. Without tile entities for now.
+ * Only contains the chunk, everything outside of it is air.
  *
  * @see BlockStateDataResolver
  */
 public class ChunkBlockAccess implements IBlockAccess
 {
 	private final Chunk chunk;
+	/** by their position relative to the chunk, see {@link ChunkPosition} */
+	private final Map<ChunkPosition, TileEntity> tileEntityByPos;
 	private final int minX;
 	private final int minZ;
 
 
 
-	public ChunkBlockAccess(Chunk chunk)
+	/** @param tileEntityByPos the chunk's tile entities, the chunk's own map isn't thread safe */
+	public ChunkBlockAccess(Chunk chunk, Map<ChunkPosition, TileEntity> tileEntityByPos)
 	{
 		this.chunk = chunk;
+		this.tileEntityByPos = tileEntityByPos;
 		this.minX = chunk.xPosition * 16;
 		this.minZ = chunk.zPosition * 16;
 	}
@@ -71,7 +78,8 @@ public class ChunkBlockAccess implements IBlockAccess
 
 	@Override
 	@Nullable
-	public TileEntity getTileEntity(int x, int y, int z) { return null; }
+	public TileEntity getTileEntity(int x, int y, int z)
+	{ return this.isInChunk(x, y, z) ? this.tileEntityByPos.get(new ChunkPosition(x - this.minX, y, z - this.minZ)) : null; }
 
 	@Override
 	public boolean isAirBlock(int x, int y, int z) { return this.getBlock(x, y, z).isAir(this, x, y, z); }
