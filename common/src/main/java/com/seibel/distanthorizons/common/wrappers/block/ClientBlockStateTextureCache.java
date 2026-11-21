@@ -381,7 +381,9 @@ public class ClientBlockStateTextureCache
 			gtnhLib.captureQuads(world, 0, 0, 0, block, (geometry, cullDirection) ->
 			{
 				int quadCount = modelQuads.size();
-				addModelQuad(geometry, cullDirection, true, modelQuads, textureBySprite);
+				// vanilla only uses ambient occlusion where it also shades
+				boolean ambientOcclusion = (geometry.shadeDirectionOverride == null);
+				addModelQuad(geometry, cullDirection, ambientOcclusion, modelQuads, textureBySprite);
 				if (modelQuads.size() != quadCount)
 				{
 					spriteByQuad.add(geometry.sprite);
