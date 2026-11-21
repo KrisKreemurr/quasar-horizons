@@ -24,8 +24,8 @@ public class FakeBlockState implements IBlockState
 	public final int meta;
 	/**
 	 * Data from the block's GTNHLib block state data handler, null for none. <br>
-	 * Blocks whose data depends on their surroundings (IE fence connections)
-	 * only get it when resolved for rendering, it's never saved.
+	 * Blocks whose data is their own state (IE a double plant's variant) get it when the chunk is read and it's saved,
+	 * blocks whose data depends on their surroundings (IE fence connections) only get it when resolved for rendering.
 	 */
 	@Nullable
 	public final String data;

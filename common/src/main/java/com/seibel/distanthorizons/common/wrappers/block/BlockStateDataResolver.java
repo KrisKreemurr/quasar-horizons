@@ -36,6 +36,13 @@ import org.jetbrains.annotations.Nullable;
  */
 public class BlockStateDataResolver
 {
+	/** @return true if the block's data is its own state kept outside its meta (IE a double plant's variant) */
+	public static boolean isLocalOnly(Block block)
+	{
+		IGtnhLibCommonAccessor gtnhLib = ModAccessorInjector.INSTANCE.get(IGtnhLibCommonAccessor.class);
+		return gtnhLib != null && gtnhLib.isBlockStateDataLocalOnly(block);
+	}
+	
 	/** @return true if the block's data depends on its neighbors (IE fence connections) */
 	public static boolean isNeighborDependent(Block block)
 	{

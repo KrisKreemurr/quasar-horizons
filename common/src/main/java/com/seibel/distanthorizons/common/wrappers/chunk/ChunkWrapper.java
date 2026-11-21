@@ -38,6 +38,8 @@ import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraft.world.chunk.Chunk;
 import com.seibel.distanthorizons.common.backports.FakeBlockState;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
+import com.seibel.distanthorizons.common.wrappers.block.BlockStateDataResolver;
+import com.seibel.distanthorizons.common.wrappers.block.ChunkBlockAccess;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.math.BlockPos;
@@ -566,7 +568,7 @@ public class ChunkWrapper implements IChunkWrapper
 		{
 			final Block block = this.chunk.getBlock(relX, relY, relZ);
 			final int meta = this.chunk.getBlockMetadata(relX, relY, relZ);
-			return BlockStateWrapper.fromBlockState(block, meta, this.wrappedLevel);
+			return this.addSelfBlockStateData(BlockStateWrapper.fromBlockState(block, meta, this.wrappedLevel), relX, relY, relZ);
 		}
 		catch (Exception e)
 		{
@@ -622,7 +624,7 @@ public class ChunkWrapper implements IChunkWrapper
 		{
 			final Block block = this.chunk.getBlock(relX, relY, relZ);
 			final int meta = this.chunk.getBlockMetadata(relX, relY, relZ);
-			return BlockStateWrapper.fromBlockState(block, meta, this.wrappedLevel, guess);
+			return this.addSelfBlockStateData(BlockStateWrapper.fromBlockState(block, meta, this.wrappedLevel, guess), relX, relY, relZ);
 		}
 		catch (Exception e)
 		{
@@ -667,6 +669,27 @@ public class ChunkWrapper implements IChunkWrapper
 		}
 		#endif
 	}
+	
+	#if MC_VER <= MC_1_7_10
+	/** 
+	 * Adds the data of blocks whose data is their own state (IE a double plant's variant in its lower half),
+	 * it's read from the chunk and saved with the LODs. <br>
+	 * Data depending on the block's surroundings is only added when rendering.
+	 */
+	private BlockStateWrapper addSelfBlockStateData(BlockStateWrapper wrapper, int relX, int relY, int relZ)
+	{
+		if (!wrapper.hasLocalOnlyBlockStateData())
+		{
+			return wrapper;
+		}
+		
+		FakeBlockState blockState = (FakeBlockState) wrapper.blockState;
+		int blockX = this.chunkPos.getMinBlockX() + relX;
+		int blockZ = this.chunkPos.getMinBlockZ() + relZ;
+		String data = BlockStateDataResolver.encode(new ChunkBlockAccess(this.chunk), blockX, relY, blockZ, blockState.block, blockState.meta);
+		return BlockStateWrapper.fromBlockState(blockState.block, blockState.meta, data, this.wrappedLevel);
+	}
+	#endif
 	
 	@Override
 	public IMutableBlockPosWrapper getMutableBlockPosWrapper() { return MUTABLE_BLOCK_POS_WRAPPER_REF.get(); }

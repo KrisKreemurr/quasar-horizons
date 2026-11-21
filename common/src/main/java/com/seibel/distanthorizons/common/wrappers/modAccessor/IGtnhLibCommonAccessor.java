@@ -50,6 +50,12 @@ public interface IGtnhLibCommonAccessor extends IModAccessor
 	 */
 	boolean isBlockStateDataNeighborDependent(Block block);
 	
+	/** 
+	 * @return true if the block's GTNHLib block state data is its own state kept outside its meta (IE a double plant's variant),
+	 * it's encoded when the chunk is read and saved
+	 */
+	boolean isBlockStateDataLocalOnly(Block block);
+	
 	/** @return the block's data, null for none or if its handler failed */
 	@Nullable
 	String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta);

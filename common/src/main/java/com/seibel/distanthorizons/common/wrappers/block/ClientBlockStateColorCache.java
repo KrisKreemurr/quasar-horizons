@@ -768,10 +768,12 @@ public class ClientBlockStateColorCache
 				IBlockAccess realLevel = (IBlockAccess) this.clientLevelWrapper.getWrappedMcObject();
 				FakeBlockState fakeBlockState = (FakeBlockState)this.blockState;
 				
-				FakeWorld fakeWorld = FAKE_WORLD_REF.get();
-				fakeWorld.update(realLevel, biomeWrapper.biome, blockPos.getX(), blockPos.getY(), blockPos.getZ(), fakeBlockState);
+				IBlockAccess world = BlockStateDataResolver.getWorld(
+					FAKE_WORLD_REF.get(), realLevel, biomeWrapper.biome,
+					blockPos.getX(), blockPos.getY(), blockPos.getZ(),
+					fakeBlockState);
 				
-				tintColor = fakeBlockState.block.colorMultiplier(fakeWorld, blockPos.getX(), blockPos.getY(), blockPos.getZ());
+				tintColor = fakeBlockState.block.colorMultiplier(world, blockPos.getX(), blockPos.getY(), blockPos.getZ());
 				#elif MC_VER <= MC_1_12_2
 				// 1.12.2 doesn't have BlockAndTintGetter -> get tintColor from biome
 				WorldClient world = (WorldClient) this.clientLevelWrapper.getWrappedMcObject();

@@ -41,6 +41,13 @@ public class GtnhLibAccessor implements IGtnhLibCommonAccessor
 	}
 	
 	@Override
+	public boolean isBlockStateDataLocalOnly(Block block)
+	{
+		BlockStateDataHandler handler = BlockStateDataRegistry.getHandler(block);
+		return handler != null && handler.getType() == BlockStateDataHandler.Type.LOCAL_ONLY;
+	}
+	
+	@Override
 	@Nullable
 	public String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta)
 	{

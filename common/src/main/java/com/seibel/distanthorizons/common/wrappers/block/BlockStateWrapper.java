@@ -119,7 +119,8 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	public static final String STATE_STRING_SEPARATOR = "_STATE_";
 	/** 
 	 * Separates the 1.7.10 block state data, see {@link FakeBlockState#data}. <br>
-	 * example "minecraft:fence_DATA_east=true,north=false,south=false,west=true"
+	 * The data itself is lowercase so it can't contain the separator, the last match is always the separator. <br>
+	 * example "minecraft:double_plant:8_DATA_variant=2"
 	 */
 	public static final String DATA_STRING_SEPARATOR = "_DATA_";
 	
@@ -209,6 +210,11 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	/** how {@link #resolveRenderState} handles this state, null until it's first needed */
 	@Nullable
 	private volatile ERenderResolve renderResolve = null;
+	#endif
+	#if MC_VER <= MC_1_7_10
+	/** see {@link #hasLocalOnlyBlockStateData}, null until it's first needed */
+	@Nullable
+	private volatile Boolean hasLocalOnlyBlockStateData = null;
 	#endif
 	/** indexed by {@link EDhDirection#faceIndex} */
 	private final boolean[] isFaceFullByFaceIndex = new boolean[6];
@@ -1686,6 +1692,30 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	
 	
 	
+	#if MC_VER <= MC_1_7_10
+	//==================//
+	// block state data //
+	//==================//
+	//region
+	
+	/** 
+	 * If the block's GTNHLib block state data is its own state kept outside its meta (IE a double plant's variant), 
+	 * it's encoded when the chunk is read and saved with the LODs.
+	 */
+	public boolean hasLocalOnlyBlockStateData()
+	{
+		Boolean hasLocalOnlyBlockStateData = this.hasLocalOnlyBlockStateData;
+		if (hasLocalOnlyBlockStateData == null)
+		{
+			hasLocalOnlyBlockStateData = (this.blockState != null) && BlockStateDataResolver.isLocalOnly(this.blockState.getBlock());
+			this.hasLocalOnlyBlockStateData = hasLocalOnlyBlockStateData;
+		}
+		return hasLocalOnlyBlockStateData;
+	}
+	
+	//endregion
+	#endif
+	
 	#if MC_VER <= MC_1_12_2
 	//========================//
 	// render state resolving //
@@ -1933,6 +1963,14 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		try
 		{
 			#if MC_VER <= MC_1_7_10
+			String data = null;
+			int dataSeparatorIndex = resourceStateString.lastIndexOf(DATA_STRING_SEPARATOR);
+			if (dataSeparatorIndex != -1)
+			{
+				data = resourceStateString.substring(dataSeparatorIndex + DATA_STRING_SEPARATOR.length());
+				resourceStateString = resourceStateString.substring(0, dataSeparatorIndex);
+			}
+			
 			String metaString = null; // will be null if no meta was included
 			int stateSeparatorIndex = resourceStateString.indexOf(STATE_STRING_SEPARATOR);
 			if (stateSeparatorIndex != -1)
@@ -1961,7 +1999,13 @@ public class BlockStateWrapper implements IBlockStateWrapper
 					meta = Integer.parseInt(metaString);
 				}
 				
-				foundWrapper = fromBlockState(block, meta, levelWrapper);
+				// only data that's the block's own state is saved, without a handler it can't be decoded
+				if (!BlockStateDataResolver.isLocalOnly(block))
+				{
+					data = null;
+				}
+				
+				foundWrapper = fromBlockState(block, meta, data, levelWrapper);
 				return foundWrapper;
 			}
 			catch (Exception e)
