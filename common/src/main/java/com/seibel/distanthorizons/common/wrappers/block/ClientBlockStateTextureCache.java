@@ -27,6 +27,7 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockCo
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockModelOverrideEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTextureOverrideEvent;
 import com.seibel.distanthorizons.api.objects.render.DhApiModelQuad;
+import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.dataObjects.render.textures.DhBlockModelQuad;
@@ -133,6 +134,10 @@ public class ClientBlockStateTextureCache
 	
 	private static final ConcurrentHashMap<BlockStateWrapper, BlockFaceTexture[]> TEXTURES_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<BlockStateWrapper, DhBlockModelQuad[]> MODELS_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
+	#if MC_VER <= MC_1_7_10
+	/** indexed by {@link EDhDirection#faceIndex}, only blocks with model quads are in here */
+	private static final ConcurrentHashMap<BlockStateWrapper, TextureAtlasSprite[]> MODEL_SPRITES_BY_BLOCK_WRAPPER = new ConcurrentHashMap<>();
+	#endif
 	
 	/** 
 	 * can be enabled to make sure the textures are being parsed
@@ -208,7 +213,33 @@ public class ClientBlockStateTextureCache
 	{
 		TEXTURES_BY_BLOCK_WRAPPER.clear();
 		MODELS_BY_BLOCK_WRAPPER.clear();
+		#if MC_VER <= MC_1_7_10
+		MODEL_SPRITES_BY_BLOCK_WRAPPER.clear();
+		#endif
 	}
+	
+	#if MC_VER <= MC_1_7_10
+	/**
+	 * The sprite the block's model shows on the given side. <br>
+	 * Unlike {@link Block#getIcon(int, int)} the model sees the block's surroundings,
+	 * IE double plant tops get the type of their lower half. <br>
+	 *
+	 * @return null if the block isn't drawn with its model
+	 */
+	@Nullable
+	public static TextureAtlasSprite getModelSprite(BlockStateWrapper blockStateWrapper, EDhDirection direction)
+	{
+		if (!Config.Client.Advanced.Graphics.Model.enableBlockModels.get()
+			|| !BlockRenderRegistry.usesModel(blockStateWrapper))
+		{
+			return null;
+		}
+		
+		// usesModel baked the model
+		TextureAtlasSprite[] spriteByFaceIndex = MODEL_SPRITES_BY_BLOCK_WRAPPER.get(blockStateWrapper);
+		return (spriteByFaceIndex != null) ? spriteByFaceIndex[direction.faceIndex] : null;
+	}
+	#endif
 	
 	//endregion
 	
@@ -345,8 +376,39 @@ public class ClientBlockStateTextureCache
 				0, 0, 0,
 				(FakeBlockState) blockStateWrapper.blockState);
 			
-			gtnhLib.captureQuads(world, 0, 0, 0, block,
-				(geometry, cullDirection) -> addModelQuad(geometry, cullDirection, true, modelQuads, textureBySprite));
+			// the sprite of each added quad, fully clear quads aren't added and never show
+			ArrayList<TextureAtlasSprite> spriteByQuad = new ArrayList<>();
+			gtnhLib.captureQuads(world, 0, 0, 0, block, (geometry, cullDirection) ->
+			{
+				int quadCount = modelQuads.size();
+				addModelQuad(geometry, cullDirection, true, modelQuads, textureBySprite);
+				if (modelQuads.size() != quadCount)
+				{
+					spriteByQuad.add(geometry.sprite);
+				}
+			});
+			
+			// each side shows the first quad lying on it, otherwise the model's first quad
+			if (!spriteByQuad.isEmpty())
+			{
+				TextureAtlasSprite[] spriteByFaceIndex = new TextureAtlasSprite[FACE_DIRECTIONS.length];
+				for (int quadIndex = 0; quadIndex < modelQuads.size(); quadIndex++)
+				{
+					EDhDirection cullDirection = modelQuads.get(quadIndex).cullDirection;
+					if (cullDirection != null && spriteByFaceIndex[cullDirection.faceIndex] == null)
+					{
+						spriteByFaceIndex[cullDirection.faceIndex] = spriteByQuad.get(quadIndex);
+					}
+				}
+				for (int faceIndex = 0; faceIndex < spriteByFaceIndex.length; faceIndex++)
+				{
+					if (spriteByFaceIndex[faceIndex] == null)
+					{
+						spriteByFaceIndex[faceIndex] = spriteByQuad.get(0);
+					}
+				}
+				MODEL_SPRITES_BY_BLOCK_WRAPPER.put(blockStateWrapper, spriteByFaceIndex);
+			}
 		}
 		catch (Exception bakeError)
 		{
@@ -581,7 +643,11 @@ public class ClientBlockStateTextureCache
 	private static BlockFaceTexture bakeFaceTexture(BlockStateWrapper blockStateWrapper, EDhDirection dhDirection)
 	{
 		#if MC_VER <= MC_1_7_10
-		TextureAtlasSprite sprite = getFaceSprite(blockStateWrapper, dhDirection);
+		TextureAtlasSprite sprite = getModelSprite(blockStateWrapper, dhDirection);
+		if (sprite == null)
+		{
+			sprite = getFaceSprite(blockStateWrapper, dhDirection);
+		}
 		return bakeSpriteTexture(sprite);
 		
 		#else

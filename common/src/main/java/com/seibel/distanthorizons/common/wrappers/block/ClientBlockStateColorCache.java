@@ -281,8 +281,13 @@ public class ClientBlockStateColorCache
 			RESOLVE_LOCK.lock();
 			FakeBlockState blockState = (FakeBlockState)this.blockState; 
 
-			TextureAtlasSprite sprite = TextureAtlasSpriteWrapper.resolveFaceSprite(
-				blockState, ForgeDirection.UP.ordinal());
+			// the model sees the block's surroundings, IE double plant tops get the type of their lower half
+			TextureAtlasSprite sprite = ClientBlockStateTextureCache.getModelSprite(this.blockStateWrapper, EDhDirection.UP);
+			if (sprite == null)
+			{
+				sprite = TextureAtlasSpriteWrapper.resolveFaceSprite(
+					blockState, ForgeDirection.UP.ordinal());
+			}
 			if (sprite != null)
 			{
 				this.baseColor = calculateColorFromTexture(

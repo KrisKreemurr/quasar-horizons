@@ -238,7 +238,11 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	
 	#if MC_VER <= MC_1_7_10
 	public static BlockStateWrapper fromBlockState(IBlockState blockState, ILevelWrapper levelWrapper)
-	{ return fromBlockState(blockState.getBlock(), blockState.getMeta(), levelWrapper); }
+	{
+		// the data is part of the state, IE the type of a double plant's top half
+		String data = (blockState instanceof FakeBlockState) ? ((FakeBlockState) blockState).data : null;
+		return fromBlockState(blockState.getBlock(), blockState.getMeta(), data, levelWrapper);
+	}
 	#endif
 	
 	/**

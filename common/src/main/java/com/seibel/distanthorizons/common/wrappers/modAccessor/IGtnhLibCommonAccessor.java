@@ -61,10 +61,11 @@ public interface IGtnhLibCommonAccessor extends IModAccessor
 	String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta);
 	
 	/**
+	 * @param data null for the handler's default, IE for states stored before the data existed
 	 * @return a world only containing the block and what its data adds around it,
 	 * null if the block has no handler
 	 */
 	@Nullable
-	IBlockAccess createBlockStateDataWorld(int x, int y, int z, Block block, int meta, String data, @Nullable BiomeGenBase biome);
+	IBlockAccess createBlockStateDataWorld(int x, int y, int z, Block block, int meta, @Nullable String data, @Nullable BiomeGenBase biome);
 	#endif
 }

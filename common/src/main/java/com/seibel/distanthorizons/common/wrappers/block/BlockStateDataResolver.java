@@ -60,7 +60,8 @@ public class BlockStateDataResolver
 
 	/**
 	 * The world the block state is shown in. <br>
-	 * States with data and a handler get a new one from GTNHLib with their decoded surroundings,
+	 * States with a handler get a new one from GTNHLib with their decoded surroundings
+	 * (the handler's default without data, IE a lower half for double plant tops that were never encoded),
 	 * all others the given fake world, updated for them.
 	 */
 	public static IBlockAccess getWorld(
@@ -69,7 +70,7 @@ public class BlockStateDataResolver
 		FakeBlockState blockState)
 	{
 		IGtnhLibCommonAccessor gtnhLib = ModAccessorInjector.INSTANCE.get(IGtnhLibCommonAccessor.class);
-		if (blockState.data != null && gtnhLib != null)
+		if (gtnhLib != null)
 		{
 			IBlockAccess dataWorld = gtnhLib.createBlockStateDataWorld(x, y, z, blockState.block, blockState.meta, blockState.data, biome);
 			if (dataWorld != null)

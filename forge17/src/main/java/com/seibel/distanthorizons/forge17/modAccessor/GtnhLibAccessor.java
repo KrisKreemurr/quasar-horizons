@@ -57,7 +57,7 @@ public class GtnhLibAccessor implements IGtnhLibCommonAccessor
 	
 	@Override
 	@Nullable
-	public IBlockAccess createBlockStateDataWorld(int x, int y, int z, Block block, int meta, String data, @Nullable BiomeGenBase biome)
+	public IBlockAccess createBlockStateDataWorld(int x, int y, int z, Block block, int meta, @Nullable String data, @Nullable BiomeGenBase biome)
 	{
 		BlockStateDataHandler handler = BlockStateDataRegistry.getHandler(block);
 		if (handler == null)
@@ -66,7 +66,14 @@ public class GtnhLibAccessor implements IGtnhLibCommonAccessor
 		}
 		
 		BlockStateDataWorld world = new BlockStateDataWorld(x, y, z, block, meta, biome);
-		BlockStateDataRegistry.decode(handler, block, meta, data, world);
+		if (data != null)
+		{
+			BlockStateDataRegistry.decode(handler, block, meta, data, world);
+		}
+		else
+		{
+			BlockStateDataRegistry.decodeDefault(handler, block, meta, world);
+		}
 		return world;
 	}
 	
