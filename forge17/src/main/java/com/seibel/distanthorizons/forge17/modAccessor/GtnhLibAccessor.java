@@ -6,6 +6,9 @@ import com.seibel.distanthorizons.common.wrappers.modAccessor.IGtnhLibCommonAcce
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.enums.MinecraftTextFormat;
 
+import com.gtnewhorizon.gtnhlib.blockstate.core.BlockStateDataHandler;
+import com.gtnewhorizon.gtnhlib.blockstate.core.BlockStateDataWorld;
+import com.gtnewhorizon.gtnhlib.blockstate.registry.BlockStateDataRegistry;
 import com.gtnewhorizon.gtnhlib.client.model.BlockRenderCapture;
 import com.gtnewhorizon.gtnhlib.client.model.WorldContext;
 import com.gtnewhorizon.gtnhlib.client.model.baked.BakedModel;
@@ -16,6 +19,7 @@ import com.gtnewhorizon.gtnhlib.util.AboveHotbarHUD;
 import net.minecraft.block.Block;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.biome.BiomeGenBase;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.BiConsumer;
@@ -28,6 +32,36 @@ public class GtnhLibAccessor implements IGtnhLibCommonAccessor
 	@Override
 	public void renderTextAboveHotbar(String text)
 	{ AboveHotbarHUD.renderTextAboveHotbar(MinecraftTextFormat.WHITE + text, 60, true, true); }
+	
+	@Override
+	public boolean isBlockStateDataNeighborDependent(Block block)
+	{
+		BlockStateDataHandler handler = BlockStateDataRegistry.getHandler(block);
+		return handler != null && handler.getType() == BlockStateDataHandler.Type.NEIGHBOR_DEPENDENT;
+	}
+	
+	@Override
+	@Nullable
+	public String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta)
+	{
+		BlockStateDataHandler handler = BlockStateDataRegistry.getHandler(block);
+		return (handler != null) ? BlockStateDataRegistry.encode(handler, world, x, y, z, block, meta) : null;
+	}
+	
+	@Override
+	@Nullable
+	public IBlockAccess createBlockStateDataWorld(int x, int y, int z, Block block, int meta, String data, @Nullable BiomeGenBase biome)
+	{
+		BlockStateDataHandler handler = BlockStateDataRegistry.getHandler(block);
+		if (handler == null)
+		{
+			return null;
+		}
+		
+		BlockStateDataWorld world = new BlockStateDataWorld(x, y, z, block, meta, biome);
+		BlockStateDataRegistry.decode(handler, block, meta, data, world);
+		return world;
+	}
 	
 	@Override
 	public void captureQuads(IBlockAccess world, int x, int y, int z, Block block, BiConsumer<QuadGeometry, EDhDirection> quadConsumer)

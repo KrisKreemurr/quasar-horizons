@@ -26,6 +26,8 @@ import com.seibel.distanthorizons.common.wrappers.block.QuadGeometry;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import net.minecraft.block.Block;
 import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.biome.BiomeGenBase;
+import org.jetbrains.annotations.Nullable;
 import java.util.function.BiConsumer;
 #endif
 
@@ -41,5 +43,22 @@ public interface IGtnhLibCommonAccessor extends IModAccessor
 	 * Quads without a sprite are skipped.
 	 */
 	void captureQuads(IBlockAccess world, int x, int y, int z, Block block, BiConsumer<QuadGeometry, EDhDirection> quadConsumer);
+	
+	/** 
+	 * @return true if the block's GTNHLib block state data depends on its neighbors (IE fence connections),
+	 * it's encoded again when rendering and never saved
+	 */
+	boolean isBlockStateDataNeighborDependent(Block block);
+	
+	/** @return the block's data, null for none or if its handler failed */
+	@Nullable
+	String encodeBlockStateData(IBlockAccess world, int x, int y, int z, Block block, int meta);
+	
+	/**
+	 * @return a world only containing the block and what its data adds around it,
+	 * null if the block has no handler
+	 */
+	@Nullable
+	IBlockAccess createBlockStateDataWorld(int x, int y, int z, Block block, int meta, String data, @Nullable BiomeGenBase biome);
 	#endif
 }

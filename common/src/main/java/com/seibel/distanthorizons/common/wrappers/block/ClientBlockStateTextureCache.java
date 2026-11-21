@@ -59,6 +59,7 @@ import com.seibel.distanthorizons.common.backports.FakeWorld;
 import com.seibel.distanthorizons.common.wrappers.modAccessor.IGtnhLibCommonAccessor;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import net.minecraft.block.Block;
+import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraftforge.common.util.ForgeDirection;
 #elif MC_VER < MC_1_21_5
@@ -338,11 +339,13 @@ public class ClientBlockStateTextureCache
 			// render state like block bounds is shared, so all baking is done in a lock
 			BAKE_LOCK.lock();
 			
-			// the block alone at the origin, neighbors are air
-			FakeWorld fakeWorld = new FakeWorld();
-			fakeWorld.update(MC.theWorld, BiomeGenBase.plains, 0, 0, 0, (FakeBlockState) blockStateWrapper.blockState);
+			// the block at the origin, neighbors are air unless its data adds some
+			IBlockAccess world = BlockStateDataResolver.getWorld(
+				new FakeWorld(), MC.theWorld, BiomeGenBase.plains,
+				0, 0, 0,
+				(FakeBlockState) blockStateWrapper.blockState);
 			
-			gtnhLib.captureQuads(fakeWorld, 0, 0, 0, block,
+			gtnhLib.captureQuads(world, 0, 0, 0, block,
 				(geometry, cullDirection) -> addModelQuad(geometry, cullDirection, true, modelQuads, textureBySprite));
 		}
 		catch (Exception bakeError)

@@ -45,6 +45,7 @@ import net.minecraftforge.fluids.BlockFluidBase;
 import net.minecraftforge.fluids.BlockFluidFinite;
 import com.seibel.distanthorizons.common.backports.FakeBlockState;
 import com.seibel.distanthorizons.common.backports.FakeWorld;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.ILodBlockLookup;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.block.*;
 import net.minecraft.init.Blocks;
@@ -116,14 +117,17 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	public static final String RESOURCE_LOCATION_SEPARATOR = ":";
 	/** example "minecraft:water_STATE_{level:0}" */
 	public static final String STATE_STRING_SEPARATOR = "_STATE_";
+	/** 
+	 * Separates the 1.7.10 block state data, see {@link FakeBlockState#data}. <br>
+	 * example "minecraft:fence_DATA_east=true,north=false,south=false,west=true"
+	 */
+	public static final String DATA_STRING_SEPARATOR = "_DATA_";
 	
 	
 	// must be defined before AIR, otherwise a null pointer will be thrown
 	private static final DhLogger LOGGER = new DhLoggerBuilder().build();
 	
-	#if MC_VER <= MC_1_7_10
-	public static final ConcurrentHashMap<Integer, BlockStateWrapper> WRAPPER_BY_BLOCK_ID_AND_META = new ConcurrentHashMap<>();
-	#elif MC_VER <= MC_1_12_2
+	#if MC_VER <= MC_1_12_2
 	public static final ConcurrentHashMap<IBlockState, BlockStateWrapper> WRAPPER_BY_BLOCK_STATE = new ConcurrentHashMap<>();
 	#else
     public static final ConcurrentHashMap<BlockState, BlockStateWrapper> WRAPPER_BY_BLOCK_STATE = new ConcurrentHashMap<>();
@@ -201,7 +205,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	private final boolean alwaysRasterizeTexture;
 	private final boolean isSolid;
 	private final boolean isFullBlock;
-	#if MC_VER > MC_1_7_10 && MC_VER <= MC_1_12_2
+	#if MC_VER <= MC_1_12_2
 	/** how {@link #resolveRenderState} handles this state, null until it's first needed */
 	@Nullable
 	private volatile ERenderResolve renderResolve = null;
@@ -316,7 +320,9 @@ public class BlockStateWrapper implements IBlockStateWrapper
 
 	#if MC_VER <= MC_1_7_10
 	// For 1.7.10 more accurate name is fromBlockAndMeta
-	public static BlockStateWrapper fromBlockState(Block block, int meta, ILevelWrapper levelWrapper)
+	public static BlockStateWrapper fromBlockState(Block block, int meta, ILevelWrapper levelWrapper) { return fromBlockState(block, meta, null, levelWrapper); }
+	/** @param data see {@link FakeBlockState#data} */
+	public static BlockStateWrapper fromBlockState(Block block, int meta, @Nullable String data, ILevelWrapper levelWrapper)
 	#elif MC_VER <= MC_1_12_2
 	public static BlockStateWrapper fromBlockState(@Nullable IBlockState blockState, ILevelWrapper levelWrapper)
 	#else
@@ -335,18 +341,12 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		
 		#if MC_VER <= MC_1_7_10
-		FakeBlockState blockState = new FakeBlockState(block, meta);
+		FakeBlockState blockState = new FakeBlockState(block, meta, Block.getIdFromBlock(block), data);
 		#endif
 		
 		// pooling wrappers significantly improves chunk->LOD processing speed
 		// and also reduces GC pressure
-		#if MC_VER <= MC_1_7_10
-		final int blockId = Block.getIdFromBlock(block);
-		final Integer packedIdMeta = FakeBlockState.packIdAndMeta(blockId, meta);
-		BlockStateWrapper existingWrapper = WRAPPER_BY_BLOCK_ID_AND_META.get(packedIdMeta);
-		#else
 		BlockStateWrapper existingWrapper = WRAPPER_BY_BLOCK_STATE.get(blockState);
-		#endif
 		if (existingWrapper != null)
 		{
 			return existingWrapper;
@@ -355,18 +355,10 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		
 		
 		// synchronized so the API event only fires once per block
-		#if MC_VER <= MC_1_7_10
-		synchronized (WRAPPER_BY_BLOCK_ID_AND_META)
-		#else
 		synchronized (WRAPPER_BY_BLOCK_STATE)
-		#endif
 		{
 			// if another thread already finished this block, use that wrapper
-			#if MC_VER <= MC_1_7_10
-			existingWrapper = WRAPPER_BY_BLOCK_ID_AND_META.get(packedIdMeta);
-			#else
 			existingWrapper = WRAPPER_BY_BLOCK_STATE.get(blockState);
-			#endif
 			if (existingWrapper != null)
 			{
 				return existingWrapper;
@@ -381,22 +373,14 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			if (!eventParam.getOverridesSet())
 			{
 				// no API changes needed, use the existing object
-				#if MC_VER <= MC_1_7_10
-				WRAPPER_BY_BLOCK_ID_AND_META.putIfAbsent(packedIdMeta, apiWrapper);
-				#else
 				WRAPPER_BY_BLOCK_STATE.putIfAbsent(blockState, apiWrapper);
-				#endif
 				return apiWrapper;
 			}
 			else
 			{
 				// create a new wrapper using whatever overrides the API user set
 				BlockStateWrapper returnWrapper = new BlockStateWrapper(blockState, levelWrapper, eventParam);
-				#if MC_VER <= MC_1_7_10
-				WRAPPER_BY_BLOCK_ID_AND_META.putIfAbsent(packedIdMeta, returnWrapper);
-				#else
 				WRAPPER_BY_BLOCK_STATE.putIfAbsent(blockState, returnWrapper);
-				#endif
 				return returnWrapper;
 			}
 		}
@@ -1702,7 +1686,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	
 	
 	
-	#if MC_VER > MC_1_7_10 && MC_VER <= MC_1_12_2
+	#if MC_VER <= MC_1_12_2
 	//========================//
 	// render state resolving //
 	//========================//
@@ -1711,6 +1695,32 @@ public class BlockStateWrapper implements IBlockStateWrapper
 	@Override
 	public boolean needsRenderResolve() { return this.getRenderResolve() == ERenderResolve.NEEDS_NEIGHBORS; }
 	
+	#if MC_VER <= MC_1_7_10
+	/** 
+	 * The GTNHLib block state data, with the neighbors from the LOD data. <br>
+	 * Stored states never have data, the same data always gives the same wrapper and with it the same model.
+	 */
+	@Override
+	public IBlockStateWrapper resolveRenderState(ILodBlockLookup lookup, int blockX, int blockY, int blockZ)
+	{
+		if (this.getRenderResolve() != ERenderResolve.NEEDS_NEIGHBORS)
+		{
+			return this;
+		}
+		
+		FakeBlockState fakeBlockState = (FakeBlockState) this.blockState;
+		LodBlockAccess blockAccess = new LodBlockAccess(lookup, fakeBlockState, blockX, blockY, blockZ);
+		String data = BlockStateDataResolver.encode(blockAccess, blockX, blockY, blockZ, fakeBlockState.block, fakeBlockState.meta);
+		
+		// only this position is missing neighbors, IE diagonally across a section corner
+		if (blockAccess.readMissing)
+		{
+			return this;
+		}
+		
+		return fromBlockState(fakeBlockState.block, fakeBlockState.meta, data, lookup.getLevelWrapper());
+	}
+	#else
 	/** getActualState again, with the neighbors from the LOD data instead of the chunk the state was stored from */
 	@Override
 	public IBlockStateWrapper resolveRenderState(ILodBlockLookup lookup, int blockX, int blockY, int blockZ)
@@ -1721,7 +1731,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		
 		BlockPos pos = new BlockPos(blockX, blockY, blockZ);
-		LodBlockAccess blockAccess = new LodBlockAccess(lookup, this.blockState, pos);
+		LodBlockAccess blockAccess = new LodBlockAccess(lookup, this.blockState, blockX, blockY, blockZ);
 		IBlockState renderState;
 		try
 		{
@@ -1749,6 +1759,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		
 		return fromBlockState(renderState, lookup.getLevelWrapper());
 	}
+	#endif
 	
 	private ERenderResolve getRenderResolve()
 	{
@@ -1760,6 +1771,18 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		return renderResolve;
 	}
+	#if MC_VER <= MC_1_7_10
+	/** Only blocks whose GTNHLib block state data depends on their neighbors are resolved */
+	private ERenderResolve probeRenderResolve()
+	{
+		if (this.blockState == null)
+		{
+			return ERenderResolve.NONE;
+		}
+		
+		return BlockStateDataResolver.isNeighborDependent(this.blockState.getBlock()) ? ERenderResolve.NEEDS_NEIGHBORS : ERenderResolve.NONE;
+	}
+	#else
 	/** 
 	 * Calls getActualState once with only air around the block to see what it reads. <br>
 	 * Whether vanilla blocks read their neighbors only depends on their own state, never on what a read returned.
@@ -1771,7 +1794,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			return ERenderResolve.NONE;
 		}
 		
-		LodBlockAccess probe = new LodBlockAccess(null, this.blockState, BlockPos.ORIGIN);
+		LodBlockAccess probe = new LodBlockAccess(null, this.blockState, 0, 0, 0);
 		try
 		{
 			this.blockState.getActualState(probe, BlockPos.ORIGIN);
@@ -1787,6 +1810,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		}
 		return probe.readNeighbor ? ERenderResolve.NEEDS_NEIGHBORS : ERenderResolve.NONE;
 	}
+	#endif
 	
 	private enum ERenderResolve
 	{
@@ -1821,6 +1845,11 @@ public class BlockStateWrapper implements IBlockStateWrapper
 		if (blockState.getMeta() != 0)
 		{
 			serialString += RESOURCE_LOCATION_SEPARATOR + blockState.getMeta();
+		}
+		// so wrappers with different data aren't equal
+		if (blockState instanceof FakeBlockState && ((FakeBlockState) blockState).data != null)
+		{
+			serialString += DATA_STRING_SEPARATOR + ((FakeBlockState) blockState).data;
 		}
 		return serialString;
 		#else
@@ -2093,20 +2122,7 @@ public class BlockStateWrapper implements IBlockStateWrapper
 			
 			if (foundWrapper != AIR)
 			{
-				#if MC_VER <= MC_1_7_10
-				
-				int blockIdAndMeta = 0;
-				// should always be true (the only exception should be air), 
-				// but just in case
-				if (foundWrapper.blockState instanceof FakeBlockState)
-				{
-					blockIdAndMeta = ((FakeBlockState)foundWrapper.blockState).getIdAndMeta();
-				}
-				
-				WRAPPER_BY_BLOCK_ID_AND_META.putIfAbsent(blockIdAndMeta, foundWrapper);
-				#else
 				WRAPPER_BY_BLOCK_STATE.putIfAbsent(foundWrapper.blockState, foundWrapper);
-				#endif
 			}
 		}
 	}
