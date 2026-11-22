@@ -76,6 +76,9 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 	
 	private final BlazeUniformBufferWrapper fragUniformBufferWrapper = new BlazeUniformBufferWrapper("fragUniformBlock");
 	private final BlazeUniformBufferWrapper vertSharedUniformBufferWrapper = new BlazeUniformBufferWrapper("vertSharedUniformBlock");
+	// Quasar Horizons: separate buffers for panorama faces so they never overwrite the live frame's uniforms
+	private final BlazeUniformBufferWrapper panoFragUniformBufferWrapper = new BlazeUniformBufferWrapper("quasarPanoFragUniformBlock");
+	private final BlazeUniformBufferWrapper panoVertSharedUniformBufferWrapper = new BlazeUniformBufferWrapper("quasarPanoVertSharedUniformBlock");
 	
 	/** used for TAA jitter, the 8 represents how many jitter points are available */
 	private int frameIndexMod8 = 0;
@@ -125,7 +128,8 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 			pipelineBuilder.withSampler("uBlockAtlas");
 			
 			pipelineBuilder.withVertexShader("terrain/blaze/vert");
-			pipelineBuilder.withFragmentShader("terrain/blaze/frag");
+			// Quasar Horizons: DH's terrain shader plus a far clip distance (for the LOD panorama)
+			pipelineBuilder.withFragmentShader("quasar/terrain/frag");
 			
 			pipelineBuilder.withUniformBuffer("vertUniqueUniformBlock");
 			pipelineBuilder.withUniformBuffer("vertSharedUniformBlock");
@@ -180,9 +184,16 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 	{
 		this.tryInit();
 		
+		// Quasar Horizons: non-null while a panorama face is being rendered
+		com.seibel.distanthorizons.common.quasar.QuasarPanorama.FaceTarget panoFace = com.seibel.distanthorizons.common.quasar.QuasarPanorama.currentFace();
+		BlazeUniformBufferWrapper fragUniforms = (panoFace != null) ? this.panoFragUniformBufferWrapper : this.fragUniformBufferWrapper;
+		BlazeUniformBufferWrapper vertSharedUniforms = (panoFace != null) ? this.panoVertSharedUniformBufferWrapper : this.vertSharedUniformBufferWrapper;
 		
-		
-		if (Config.Client.Advanced.Graphics.enableAntiAliasing.get())
+		if (panoFace != null)
+		{
+			// no TAA jitter in the panorama, and leave the live jitter sequence alone
+		}
+		else if (Config.Client.Advanced.Graphics.enableAntiAliasing.get())
 		{
 			this.frameIndexMod8++;
 			this.frameIndexMod8 %= 8;
@@ -223,7 +234,7 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 				
 				int i = Config.Client.Advanced.Debugging.enableWhiteWorld.get() ? 1 : 0;
 				
-				this.vertSharedUniformBufferWrapper
+				vertSharedUniforms
 					.putInt(i) // uIsWhiteWorld
 					
 					.putFloat((float) renderEventParam.worldYOffset) // uWorldYOffset
@@ -231,9 +242,9 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 					
 					.putFloat(earthCurveRatio) // uEarthRadius
 					
-					.putFloat(this.frameIndexMod8) // uFrameMod8
-					.putFloat(BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper.getWidth()) // uViewWidth
-					.putFloat(BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper.getHeight()) // uViewHeight
+					.putFloat((panoFace != null) ? -1 : this.frameIndexMod8) // uFrameMod8
+					.putFloat((panoFace != null) ? panoFace.size : BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper.getWidth()) // uViewWidth
+					.putFloat((panoFace != null) ? panoFace.size : BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper.getHeight()) // uViewHeight
 					
 					.putVec3f(
 						(float) renderEventParam.exactCameraPosition.x,
@@ -253,16 +264,22 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 					// this added value prevents the near clip plane and discard circle from touching, which looks bad
 					dhNearClipDistance += 16f;
 				}
+				if (panoFace != null)
+				{
+					// the panorama only holds LODs beyond its start distance
+					dhNearClipDistance = panoFace.nearClipDistance;
+				}
 				
 				
 				// upload data //
-				this.fragUniformBufferWrapper
+				fragUniforms
 					.putFloat(dhNearClipDistance) // uClipDistance
 					.putFloat(Config.Client.Advanced.Graphics.NoiseTexture.noiseIntensity.get()) // uNoiseIntensity
 					.putInt(Config.Client.Advanced.Graphics.NoiseTexture.noiseSteps.get()) // uNoiseSteps
 					.putInt(Config.Client.Advanced.Graphics.NoiseTexture.noiseDropoff.get()) // uNoiseDropoff
-					.putInt(Config.Client.Advanced.Graphics.Quality.ditherDhFade.get() ? 1 : 0) // uDitherDhRendering
+					.putInt((panoFace == null && Config.Client.Advanced.Graphics.Quality.ditherDhFade.get()) ? 1 : 0) // uDitherDhRendering
 					.putInt(Config.Client.Advanced.Graphics.NoiseTexture.enableNoiseTexture.get() ? 1 : 0) // uNoiseEnabled
+					.putFloat((panoFace != null) ? 0f : com.seibel.distanthorizons.common.quasar.QuasarPanorama.liveFarClipDistance) // uFarClipDistance
 					.finishAndUpload()
 				;
 			}
@@ -281,8 +298,8 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 				// create a render pass
 				try (RenderPassWrapper renderPassWrapper = new RenderPassWrapper(
 					this::getRenderPassName,
-					BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper,
-					BlazeDhMetaRenderer.INSTANCE.dhDepthTextureWrapper)
+					(panoFace != null) ? panoFace.color : BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper,
+					(panoFace != null) ? panoFace.depth : BlazeDhMetaRenderer.INSTANCE.dhDepthTextureWrapper)
 				)
 				{
 					LightMapWrapper lightMapWrapper = (LightMapWrapper) renderEventParam.lightmap;
@@ -297,8 +314,8 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 					renderPassWrapper.setPipeline(opaquePass ? this.opaquePipeline : this.transparentPipeline);
 					
 					// shared uniforms
-					renderPassWrapper.setUniform("fragUniformBlock", this.fragUniformBufferWrapper);
-					renderPassWrapper.setUniform("vertSharedUniformBlock", this.vertSharedUniformBufferWrapper);
+					renderPassWrapper.setUniform("fragUniformBlock", fragUniforms);
+					renderPassWrapper.setUniform("vertSharedUniformBlock", vertSharedUniforms);
 					
 					
 					

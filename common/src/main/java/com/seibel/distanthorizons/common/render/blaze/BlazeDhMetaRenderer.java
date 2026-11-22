@@ -119,6 +119,9 @@ public class BlazeDhMetaRenderer implements IDhMetaRenderer
 				color.getBlue()
 			)
 		);
+		
+		// Quasar Horizons: paint the far-LOD panorama (and refresh one face of it if needed)
+		com.seibel.distanthorizons.common.quasar.QuasarPanorama.afterClear(renderParams);
 	}
 	
 	//endregion
