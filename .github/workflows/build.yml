@@ -29,6 +29,8 @@ jobs:
           cp build/forgix/*.jar out/ 2>/dev/null || true
           cp neoforge/build/libs/*.jar out/ 2>/dev/null || true
           rm -f out/*-sources.jar out/*-dev.jar out/*-all.jar
+          # the merged jar is still named by the forgix plugin; rename it for the fork
+          for f in out/DistantHorizons-*.jar; do [ -e "$f" ] && mv "$f" "out/QuasarHorizons-${f#out/DistantHorizons-}"; done
           ls -la out
           echo "== Quasar files in the jar"; for j in out/*fabric-neoforge.jar; do unzip -l "$j" | grep -iE "quasar" || true; done
       - uses: actions/upload-artifact@v4

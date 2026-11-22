@@ -11,6 +11,7 @@ public final class QuasarPanorama
 	public static float liveFarClipDistance = 0f;
 	public static Object currentFace() { return null; }
 	public static String getF3Line() { return ""; }
+	public static boolean skipContainer(Object container, Object cam, Object face) { return false; }
 }
 #else
 
@@ -28,6 +29,8 @@ import com.seibel.distanthorizons.common.render.blaze.wrappers.RenderPipelineBui
 import com.seibel.distanthorizons.common.render.blaze.wrappers.texture.BlazeTextureWrapper;
 import com.seibel.distanthorizons.common.render.blaze.wrappers.uniform.BlazeUniformBufferWrapper;
 import com.seibel.distanthorizons.core.config.Config;
+import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodBufferContainer;
+import com.seibel.distanthorizons.core.pos.DhSectionPos;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.render.RenderBufferHandler;
 import com.seibel.distanthorizons.core.render.RenderParams;
@@ -62,6 +65,10 @@ public final class QuasarPanorama
 	private static final int FACES = 6;
 	private static final int FACE_SIZE = 1280;
 	private static final long MAX_AGE_MS = 10_000;
+	/** vertical movement changes what far terrain hides much more than horizontal movement does */
+	private static final float VERTICAL_THRESHOLD = 6f;
+	/** generous vertical extent used when bounding LOD sections (they have no height in their position) */
+	private static final double MAX_VERTICAL_EXTENT = 512;
 	
 	/** +X, -X, +Y, -Y, +Z, -Z (matches the composite shader's face order) */
 	private static final Matrix4f[] FACE_VIEW = {
@@ -168,7 +175,8 @@ public final class QuasarPanorama
 				long now = System.currentTimeMillis();
 				double[] c = centers[front];
 				double dx = cam.x - c[0], dy = cam.y - c[1], dz = cam.z - c[2];
-				boolean moved = (dx * dx + dy * dy + dz * dz) > (double) moveThreshold * moveThreshold;
+				boolean moved = (dx * dx + dz * dz) > (double) moveThreshold * moveThreshold
+					|| Math.abs(dy) > VERTICAL_THRESHOLD;
 				if (!frontValid || moved || now - refreshStartMs > MAX_AGE_MS || start != builtStartDistance)
 				{
 					int back = 1 - front;
@@ -291,6 +299,39 @@ public final class QuasarPanorama
 			params.exactCameraPosition = savedCam;
 			// put the live render list back
 			params.renderBufferHandler.buildRenderList(params);
+		}
+	}
+	
+	
+	
+	/**
+	 * Lets the terrain renderer skip whole LOD sections: in the live pass the ones entirely beyond the
+	 * panorama split (the panorama has them), in a panorama face the ones entirely inside it.
+	 * Skipping whole sections is what saves GPU time; the shader's distance discard only trims edges.
+	 */
+	public static boolean skipContainer(LodBufferContainer container, DhVec3d cam, FaceTarget face)
+	{
+		if (cam == null) return false;
+		boolean live = (face == null);
+		if (live && liveFarClipDistance <= 0f) return false;
+		
+		int width = DhSectionPos.getBlockWidth(container.pos);
+		double minX = container.minCornerBlockPos.getX(), minZ = container.minCornerBlockPos.getZ();
+		double maxX = minX + width, maxZ = minZ + width;
+		
+		if (live)
+		{
+			// nearest horizontal distance from the camera to the section
+			double nx = Math.max(Math.max(minX - cam.x, 0), cam.x - maxX);
+			double nz = Math.max(Math.max(minZ - cam.z, 0), cam.z - maxZ);
+			return nx * nx + nz * nz > (double) liveFarClipDistance * liveFarClipDistance;
+		}
+		else
+		{
+			// farthest distance from the panorama center to the section (with a generous height)
+			double fx = Math.max(Math.abs(minX - cam.x), Math.abs(maxX - cam.x));
+			double fz = Math.max(Math.abs(minZ - cam.z), Math.abs(maxZ - cam.z));
+			return fx * fx + fz * fz + MAX_VERTICAL_EXTENT * MAX_VERTICAL_EXTENT < (double) face.nearClipDistance * face.nearClipDistance;
 		}
 	}
 	

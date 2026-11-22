@@ -339,6 +339,12 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 							}
 						}
 						
+						// Quasar Horizons: skip LODs that are entirely handled by the other side of the panorama split
+						if (com.seibel.distanthorizons.common.quasar.QuasarPanorama.skipContainer(bufferContainer, renderEventParam.exactCameraPosition, panoFace))
+						{
+							continue;
+						}
+						
 						renderPassWrapper.setUniform("vertUniqueUniformBlock", uniformWrapper);
 						
 						
