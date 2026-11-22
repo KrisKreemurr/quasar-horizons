@@ -73,6 +73,7 @@ public class DhDebugScreenEntry implements net.minecraft.client.gui.components.d
 	{
 		List<String> messageList = new ArrayList<>();
 		F3Screen.addStringToDisplay(messageList);
+		messageList.addAll(com.seibel.distanthorizons.common.quasar.DhGpuTimer.getF3Lines());
 		
 		for (String message : messageList)
 		{

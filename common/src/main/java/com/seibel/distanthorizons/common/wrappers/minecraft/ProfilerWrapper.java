@@ -46,20 +46,50 @@ public class ProfilerWrapper implements IProfilerWrapper
 	
 	
 	
+	// Quasar Horizons: track DH's render block so its steps can be GPU-timed
+	private static final String DH_RENDER_BLOCK = "LOD GL setup";
+	private int depth = 0;
+	private int renderBlockDepth = -1;
+	/** only the thread that runs DH's render block is tracked (the wrapper can be shared) */
+	private volatile Thread renderThread;
+	
 	@Override
 	public IProfileBlock push(String newSection) 
 	{
+		Thread current = Thread.currentThread();
+		if (this.renderThread == null && DH_RENDER_BLOCK.equals(newSection))
+		{
+			this.renderThread = current;
+		}
+		boolean tracked = current == this.renderThread;
+		if (tracked)
+		{
+			this.depth++;
+			if (this.renderBlockDepth < 0 && DH_RENDER_BLOCK.equals(newSection))
+			{
+				this.renderBlockDepth = this.depth;
+				com.seibel.distanthorizons.common.quasar.DhGpuTimer.begin(newSection);
+			}
+		}
+		
+
 		#if MC_VER <= MC_1_12_2
 		this.profiler.startSection(newSection);
 		#else
 		this.profiler.push(newSection);
 		#endif
-		return new ProfileBlock(this.profiler);
+		return new ProfileBlock(this.profiler, tracked ? this : null);
 	}
 	
 	@Override
 	public void popPush(String newSection) 
 	{
+		if (Thread.currentThread() == this.renderThread && this.depth == this.renderBlockDepth)
+		{
+			com.seibel.distanthorizons.common.quasar.DhGpuTimer.mark(newSection);
+		}
+		
+
 		#if MC_VER <= MC_1_12_2
 		this.profiler.endStartSection(newSection);
 		#else
@@ -89,9 +119,32 @@ public class ProfilerWrapper implements IProfilerWrapper
 		#endif
 		{ this.profiler = newProfiler; }
 		
+		private ProfilerWrapper owner;
+		
+		#if MC_VER <= MC_1_12_2
+		public ProfileBlock(Profiler newProfiler, ProfilerWrapper owner)
+		#else
+		public ProfileBlock(ProfilerFiller newProfiler, ProfilerWrapper owner)
+		#endif
+		{
+			this.profiler = newProfiler;
+			this.owner = owner;
+		}
+		
 		@Override
 		public void close()
 		{
+			if (this.owner != null)
+			{
+				if (this.owner.depth == this.owner.renderBlockDepth)
+				{
+					com.seibel.distanthorizons.common.quasar.DhGpuTimer.end();
+					this.owner.renderBlockDepth = -1;
+				}
+				this.owner.depth--;
+			}
+			
+
 			#if MC_VER <= MC_1_12_2
 			this.profiler.endSection();
 			#else
