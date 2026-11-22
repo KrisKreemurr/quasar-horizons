@@ -11,7 +11,7 @@ public final class QuasarPanorama
 	public static float liveFarClipDistance = 0f;
 	public static Object currentFace() { return null; }
 	public static String getF3Line() { return ""; }
-	public static boolean skipContainer(Object container, Object cam, Object face) { return false; }
+	public static boolean skipContainer(Object container, Object cam, Object face, float nearClip) { return false; }
 }
 #else
 
@@ -305,33 +305,44 @@ public final class QuasarPanorama
 	
 	
 	/**
-	 * Lets the terrain renderer skip whole LOD sections: in the live pass the ones entirely beyond the
-	 * panorama split (the panorama has them), in a panorama face the ones entirely inside it.
+	 * Lets the terrain renderer skip whole LOD sections that would be thrown away pixel by pixel anyway:
+	 * - live pass: sections entirely inside DH's near clip (covered by real chunks; DH discards those
+	 *   pixels) and, with the panorama on, sections entirely beyond the panorama split
+	 * - panorama face: sections entirely inside the panorama's start distance
 	 * Skipping whole sections is what saves GPU time; the shader's distance discard only trims edges.
 	 */
-	public static boolean skipContainer(LodBufferContainer container, DhVec3d cam, FaceTarget face)
+	public static boolean skipContainer(LodBufferContainer container, DhVec3d cam, FaceTarget face, float nearClip)
 	{
 		if (cam == null) return false;
-		boolean live = (face == null);
-		if (live && liveFarClipDistance <= 0f) return false;
 		
 		int width = DhSectionPos.getBlockWidth(container.pos);
 		double minX = container.minCornerBlockPos.getX(), minZ = container.minCornerBlockPos.getZ();
 		double maxX = minX + width, maxZ = minZ + width;
 		
-		if (live)
+		// farthest horizontal distance from the camera to the section
+		double fx = Math.max(Math.abs(minX - cam.x), Math.abs(maxX - cam.x));
+		double fz = Math.max(Math.abs(minZ - cam.z), Math.abs(maxZ - cam.z));
+		double farthestSq = fx * fx + fz * fz;
+		
+		if (face == null)
 		{
-			// nearest horizontal distance from the camera to the section
-			double nx = Math.max(Math.max(minX - cam.x, 0), cam.x - maxX);
-			double nz = Math.max(Math.max(minZ - cam.z, 0), cam.z - maxZ);
-			return nx * nx + nz * nz > (double) liveFarClipDistance * liveFarClipDistance;
+			// Entirely within the near clip horizontally: real chunks cover that whole column,
+			// and DH discards these pixels anyway.
+			if (nearClip > 0f && farthestSq < (double) nearClip * nearClip) return true;
+			
+			if (liveFarClipDistance > 0f)
+			{
+				// nearest horizontal distance from the camera to the section
+				double nx = Math.max(Math.max(minX - cam.x, 0), cam.x - maxX);
+				double nz = Math.max(Math.max(minZ - cam.z, 0), cam.z - maxZ);
+				return nx * nx + nz * nz > (double) liveFarClipDistance * liveFarClipDistance;
+			}
+			return false;
 		}
 		else
 		{
-			// farthest distance from the panorama center to the section (with a generous height)
-			double fx = Math.max(Math.abs(minX - cam.x), Math.abs(maxX - cam.x));
-			double fz = Math.max(Math.abs(minZ - cam.z), Math.abs(maxZ - cam.z));
-			return fx * fx + fz * fz + MAX_VERTICAL_EXTENT * MAX_VERTICAL_EXTENT < (double) face.nearClipDistance * face.nearClipDistance;
+			// farthest distance from the panorama center (with a generous height)
+			return farthestSq + MAX_VERTICAL_EXTENT * MAX_VERTICAL_EXTENT < (double) face.nearClipDistance * face.nearClipDistance;
 		}
 	}
 	

@@ -179,8 +179,12 @@ public class BlazeDhSsaoRenderer implements IDhSsaoRenderer
 		
 		
 		// textures
-		this.ssaoColorTextureWrapper.tryCreateOrResizeToScreenSize();
-		this.ssaoDepthTextureWrapper.tryCreateOrResizeToScreenSize();
+		// Quasar Horizons: SSAO is computed at half resolution (about a quarter of the work);
+		// the bilateral blur in the apply pass smooths it back out at full resolution.
+		int ssaoWidth = Math.max(1, MC_RENDER.getTargetFramebufferViewportWidth() / 2);
+		int ssaoHeight = Math.max(1, MC_RENDER.getTargetFramebufferViewportHeight() / 2);
+		this.ssaoColorTextureWrapper.tryCreateOrResize(ssaoWidth, ssaoHeight);
+		this.ssaoDepthTextureWrapper.tryCreateOrResize(ssaoWidth, ssaoHeight);
 		
 		// frag uniforms
 		{
@@ -213,8 +217,9 @@ public class BlazeDhSsaoRenderer implements IDhSsaoRenderer
 		{
 			// create data //
 			
-			float viewWidth = (float)MC_RENDER.getTargetFramebufferViewportWidth();
-			float viewHeight = (float)MC_RENDER.getTargetFramebufferViewportHeight();
+			// blur steps are measured in SSAO-texture pixels (half resolution)
+			float viewWidth = (float)ssaoWidth;
+			float viewHeight = (float)ssaoHeight;
 			
 			float nearClipPlane = RenderUtil.getNearClipPlaneInBlocks();
 			float farClipPlane = RenderUtil.getFarClipPlaneDistanceInBlocks();
@@ -223,7 +228,7 @@ public class BlazeDhSsaoRenderer implements IDhSsaoRenderer
 			// upload data //
 			this.applyFragUniformBufferWrapper
 				.putVec2f(viewWidth, viewHeight) // uViewSize
-				.putInt(2) // uBlurRadius
+				.putInt(1) // uBlurRadius (half-res texels cover twice the screen area)
 				.putFloat(nearClipPlane) // uNearClipPlane
 				.putFloat(farClipPlane) // uFarClipPlane
 				.putInt((RENDER_DEF.getDepthDirection() == EDhApiDepthDirection.REVERSE_Z) ? 1 : 0) // uIsReverseZDepth

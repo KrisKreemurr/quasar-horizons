@@ -188,6 +188,7 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 		com.seibel.distanthorizons.common.quasar.QuasarPanorama.FaceTarget panoFace = com.seibel.distanthorizons.common.quasar.QuasarPanorama.currentFace();
 		BlazeUniformBufferWrapper fragUniforms = (panoFace != null) ? this.panoFragUniformBufferWrapper : this.fragUniformBufferWrapper;
 		BlazeUniformBufferWrapper vertSharedUniforms = (panoFace != null) ? this.panoVertSharedUniformBufferWrapper : this.vertSharedUniformBufferWrapper;
+		float liveNearClip = 0f;
 		
 		if (panoFace != null)
 		{
@@ -264,6 +265,8 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 					// this added value prevents the near clip plane and discard circle from touching, which looks bad
 					dhNearClipDistance += 16f;
 				}
+				// Quasar Horizons: DH's own discard radius, used to skip LOD sections entirely under real chunks
+				liveNearClip = Config.Client.Advanced.Debugging.lodOnlyMode.get() ? 0f : dhNearClipDistance;
 				if (panoFace != null)
 				{
 					// the panorama only holds LODs beyond its start distance
@@ -340,7 +343,7 @@ public class BlazeDhTerrainRenderer implements IDhTerrainRenderer
 						}
 						
 						// Quasar Horizons: skip LODs that are entirely handled by the other side of the panorama split
-						if (com.seibel.distanthorizons.common.quasar.QuasarPanorama.skipContainer(bufferContainer, renderEventParam.exactCameraPosition, panoFace))
+						if (com.seibel.distanthorizons.common.quasar.QuasarPanorama.skipContainer(bufferContainer, renderEventParam.exactCameraPosition, panoFace, liveNearClip))
 						{
 							continue;
 						}
