@@ -64,31 +64,68 @@ float fetchDepth(int f, vec2 uv)
 float depthToNdc(float d) { return (uZeroToOne != 0) ? d : d * 2.0 - 1.0; }
 float ndcToDepth(float z) { return (uZeroToOne != 0) ? z : z * 0.5 + 0.5; }
 
-void main()
+int faceFor(vec3 dir)
 {
-    // view direction of this pixel
-    vec4 ndc = vec4(texCoord * 2.0 - 1.0, (uZeroToOne != 0) ? 0.5 : 0.0, 1.0);
-    vec4 p = uInvCombined * ndc;
-    vec3 dir = normalize(p.xyz / p.w);
-    
-    // pick the cube face that direction falls in
     vec3 a = abs(dir);
-    int f;
-    if (a.x >= a.y && a.x >= a.z) f = (dir.x > 0.0) ? 0 : 1;
-    else if (a.y >= a.z)         f = (dir.y > 0.0) ? 2 : 3;
-    else                         f = (dir.z > 0.0) ? 4 : 5;
-    
-    vec4 faceClip = uFaceVP[f] * vec4(dir, 1.0);
-    if (faceClip.w <= 0.0) discard;
-    vec2 uv = (faceClip.xy / faceClip.w) * 0.5 + 0.5;
+    if (a.x >= a.y && a.x >= a.z) return (dir.x > 0.0) ? 0 : 1;
+    if (a.y >= a.z)               return (dir.y > 0.0) ? 2 : 3;
+    return (dir.z > 0.0) ? 4 : 5;
+}
+
+/**
+ * Looks up the panorama in a direction (seen from the panorama center).
+ * Returns false if nothing is there; otherwise the hit position (relative to the center),
+ * the face and the face uv.
+ */
+bool lookup(vec3 dirFromCenter, out vec3 posFromCenter, out int f, out vec2 uv)
+{
+    f = faceFor(dirFromCenter);
+    vec4 faceClip = uFaceVP[f] * vec4(dirFromCenter, 1.0);
+    if (faceClip.w <= 0.0) return false;
+    uv = (faceClip.xy / faceClip.w) * 0.5 + 0.5;
     
     float d = fetchDepth(f, uv);
-    if (d == uFarDepth) discard; // nothing far away in this direction
+    if (d == uFarDepth) return false;
     
-    // rebuild the position (relative to the panorama center), then move it to the live camera
     vec4 pc = uInvFaceVP[f] * vec4(uv * 2.0 - 1.0, depthToNdc(d), 1.0);
-    vec3 posFromCamera = pc.xyz / pc.w + uCenterOffset.xyz;
+    posFromCenter = pc.xyz / pc.w;
+    return true;
+}
+
+void main()
+{
+    // view ray of this pixel (from the live camera)
+    vec4 ndc = vec4(texCoord * 2.0 - 1.0, (uZeroToOne != 0) ? 0.5 : 0.0, 1.0);
+    vec4 p = uInvCombined * ndc;
+    vec3 ray = normalize(p.xyz / p.w);
     
+    // the camera, seen from the panorama center
+    vec3 camFromCenter = -uCenterOffset.xyz;
+    
+    // Parallax correction: the panorama was taken from its center, not from where the camera is now.
+    // Start by looking along the camera ray, then repeatedly move the lookup direction to where that
+    // ray actually is at the depth we found, so far terrain stays put in the world while you move.
+    vec3 posFromCenter;
+    int f;
+    vec2 uv;
+    if (!lookup(ray, posFromCenter, f, uv)) discard;
+    
+    for (int i = 0; i < 3; i++)
+    {
+        // distance along the camera ray to the surface we just found
+        float t = max(dot(posFromCenter - camFromCenter, ray), 1.0);
+        vec3 guess = camFromCenter + ray * t;
+        
+        vec3 refinedPos;
+        int refinedFace;
+        vec2 refinedUv;
+        if (!lookup(normalize(guess), refinedPos, refinedFace, refinedUv)) discard;
+        posFromCenter = refinedPos;
+        f = refinedFace;
+        uv = refinedUv;
+    }
+    
+    vec3 posFromCamera = posFromCenter + uCenterOffset.xyz;
     vec4 clip = uCombined * vec4(posFromCamera, 1.0);
     if (clip.w <= 0.0) discard;
     
