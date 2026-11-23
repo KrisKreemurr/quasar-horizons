@@ -457,6 +457,13 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 	
 	public void disableVanillaClouds()
 	{
+		// Quasar Horizons: only take vanilla clouds away when DH draws its own; otherwise the sky would be left
+		// without clouds every launch (and the player's own choice in Video Settings would be overwritten).
+		if (!com.seibel.distanthorizons.core.config.Config.Client.Advanced.Graphics.GenericRendering.enableCloudRendering.get())
+		{
+			LOGGER.info("DH clouds are off, keeping the vanilla cloud setting.");
+			return;
+		}
 		LOGGER.info("Disabling vanilla clouds... This is done to prevent vanilla clouds from rendering on top of Distant Horizons LODs.");
 		
 		#if MC_VER <= MC_1_7_10
