@@ -155,6 +155,7 @@ public final class QuasarPanorama
 	{
 		liveFarClipDistance = 0f;
 		readSettings();
+		servicePortalPanoramas(renderParams);
 		if (!enabled || failed || renderParams.renderBufferHandler == null || renderParams.exactCameraPosition == null)
 		{
 			frontValid = false;
@@ -242,10 +243,16 @@ public final class QuasarPanorama
 	
 	private static void renderFace(RenderParams params, int set, int face, float start)
 	{
-		BlazeTextureWrapper color = colors[set][face];
-		BlazeTextureWrapper depth = depths[set][face];
-		color.tryCreateOrResize(FACE_SIZE, FACE_SIZE);
-		depth.tryCreateOrResize(FACE_SIZE, FACE_SIZE);
+		renderFaceInto(params, colors[set][face], depths[set][face], centers[set], face, start, FACE_SIZE,
+			faceViewProj[set][face], faceInvViewProj[set][face]);
+	}
+	
+	/** Renders one 90° cube face of the LODs beyond {@code start} as seen from {@code center} into the given targets. */
+	private static void renderFaceInto(RenderParams params, BlazeTextureWrapper color, BlazeTextureWrapper depth,
+		double[] center, int face, float start, int size, Matrix4f outViewProj, Matrix4f outInvViewProj)
+	{
+		color.tryCreateOrResize(size, size);
+		depth.tryCreateOrResize(size, size);
 		color.clearColor(0);
 		depth.clearDepth(RENDER_DEF.getDepthDirection().farDepth);
 		
@@ -267,22 +274,22 @@ public final class QuasarPanorama
 			
 			Matrix4f view = FACE_VIEW[face];
 			Matrix4f viewProj = new Matrix4f(proj).mul(view);
-			faceViewProj[set][face].set(viewProj);
-			faceInvViewProj[set][face].set(viewProj).invert();
+			outViewProj.set(viewProj);
+			outInvViewProj.set(viewProj).invert();
 			
 			DhMat4f dhView = new DhMat4f(view);
 			params.mcModelViewMatrix.set(dhView);
 			params.dhModelViewMatrix.set(dhView);
 			params.dhProjectionMatrix.set(new DhMat4f(proj));
 			params.dhMvmProjMatrix.set(new DhMat4f(viewProj));
-			double[] c = centers[set];
+			double[] c = center;
 			params.exactCameraPosition = new DhVec3d(c[0], c[1], c[2]);
 			
 			RenderBufferHandler buffers = params.renderBufferHandler;
 			buffers.buildRenderList(params);
 			
 			IProfilerWrapper profiler = MC_CLIENT.getProfiler();
-			currentFace = new FaceTarget(color, depth, start, FACE_SIZE);
+			currentFace = new FaceTarget(color, depth, start, size);
 			BlazeDhTerrainRenderer.INSTANCE.render(params, true, buffers.getColumnRenderBuffers(), profiler);
 			if (Config.Client.Advanced.Graphics.Quality.transparency.get() == EDhApiTransparency.COMPLETE)
 			{
@@ -408,6 +415,212 @@ public final class QuasarPanorama
 			pass.setVertexBuffer(screenVbo);
 			pass.draw(4);
 		}
+	}
+	
+	
+	
+	//===================//
+	// portal panoramas  //
+	//===================//
+	
+	/*
+	 * Quasar MC: far terrain through portals and mirrors (Quasar Immersive Portals). The portal mod asks every frame
+	 * for a panorama centred on a portal's camera ({@link #requestPortal}); up to MAX_PORTAL_PANOS are kept, each a
+	 * double-buffered cube of the LODs beyond the portal's live terrain. One face is built per frame in total, and only
+	 * when a cube is missing, its camera moved past the threshold, it is 10 s old or the start distance changed - the
+	 * steady-state cost is zero. The portal mod paints the front cube into its view ({@link #portalView}).
+	 */
+	private static final int MAX_PORTAL_PANOS = 2;
+	private static final long PORTAL_IDLE_MS = 2_000;
+	
+	private static final class PortalPano
+	{
+		final BlazeTextureWrapper[][] colors = new BlazeTextureWrapper[2][FACES];
+		final BlazeTextureWrapper[][] depths = new BlazeTextureWrapper[2][FACES];
+		final Matrix4f[][] viewProj = new Matrix4f[2][FACES];
+		final Matrix4f[][] invViewProj = new Matrix4f[2][FACES];
+		final double[][] centers = new double[2][3];
+		int key = Integer.MIN_VALUE;
+		int front = 0;
+		boolean valid = false;
+		int nextFace = -1;
+		long refreshStartMs;
+		float builtStart = -1f;
+		int builtSize = 0;
+		final double[] want = new double[3];
+		float wantStart;
+		int wantSize;
+		long lastRequestMs;
+		
+		PortalPano(int slot)
+		{
+			for (int set = 0; set < 2; set++)
+			{
+				for (int f = 0; f < FACES; f++)
+				{
+					this.colors[set][f] = BlazeTextureWrapper.createColor("quasar_portal_pano_color_" + slot + "_" + set + "_" + f);
+					this.depths[set][f] = BlazeTextureWrapper.createDepth("quasar_portal_pano_depth_" + slot + "_" + set + "_" + f);
+					this.viewProj[set][f] = new Matrix4f();
+					this.invViewProj[set][f] = new Matrix4f();
+				}
+			}
+		}
+	}
+	
+	private static final PortalPano[] portalPanos = new PortalPano[MAX_PORTAL_PANOS];
+	private static int portalRoundRobin = 0;
+	private static boolean portalFailed = false;
+	private static int portalFacesThisSecond = 0;
+	private static int shownPortalFaces = 0;
+	private static long portalSecondStart = 0;
+	
+	/**
+	 * Ask for (or keep alive) the far-terrain panorama of portal {@code key}, centred on its camera.
+	 * {@code start}: blocks from the centre where the panorama begins (the portal's live terrain ends there);
+	 * {@code size}: face resolution in pixels.
+	 */
+	public static void requestPortal(int key, double x, double y, double z, float start, int size)
+	{
+		if (portalFailed) return;
+		long now = System.currentTimeMillis();
+		PortalPano slot = null;
+		for (PortalPano p : portalPanos)
+		{
+			if (p != null && p.key == key) { slot = p; break; }
+		}
+		if (slot == null)
+		{
+			// a free slot, or one nobody asked for lately
+			for (int i = 0; i < MAX_PORTAL_PANOS; i++)
+			{
+				PortalPano p = portalPanos[i];
+				if (p == null) { p = portalPanos[i] = new PortalPano(i); }
+				if (p.key == Integer.MIN_VALUE || now - p.lastRequestMs > PORTAL_IDLE_MS)
+				{
+					p.key = key;
+					p.valid = false;
+					p.nextFace = -1;
+					slot = p;
+					break;
+				}
+			}
+			if (slot == null) return; // all slots busy with nearer portals
+		}
+		slot.want[0] = x;
+		slot.want[1] = y;
+		slot.want[2] = z;
+		slot.wantStart = start;
+		slot.wantSize = Math.max(64, Math.min(2048, size));
+		slot.lastRequestMs = now;
+	}
+	
+	/**
+	 * The current panorama of portal {@code key}, or null if there is none yet:
+	 * { GpuTextureView[6] colors, GpuTextureView[6] depths, float[96] face view-projections,
+	 *   float[96] their inverses, double[3] centre, Float far depth, Boolean zero-to-one depth range }.
+	 */
+	public static Object[] portalView(int key)
+	{
+		for (PortalPano p : portalPanos)
+		{
+			if (p == null || p.key != key || !p.valid) continue;
+			com.mojang.renderpearl.api.textures.GpuTextureView[] c = new com.mojang.renderpearl.api.textures.GpuTextureView[FACES];
+			com.mojang.renderpearl.api.textures.GpuTextureView[] d = new com.mojang.renderpearl.api.textures.GpuTextureView[FACES];
+			float[] vp = new float[FACES * 16];
+			float[] inv = new float[FACES * 16];
+			for (int f = 0; f < FACES; f++)
+			{
+				c[f] = p.colors[p.front][f].getTextureView();
+				d[f] = p.depths[p.front][f].getTextureView();
+				p.viewProj[p.front][f].get(vp, f * 16);
+				p.invViewProj[p.front][f].get(inv, f * 16);
+			}
+			double[] center = p.centers[p.front].clone();
+			return new Object[] { c, d, vp, inv, center,
+				RENDER_DEF.getDepthDirection().farDepth,
+				RENDER_DEF.getDepthRange() == EDhApiDepthRange.ZERO_TO_POS_ONE };
+		}
+		return null;
+	}
+	
+	private static void servicePortalPanoramas(RenderParams params)
+	{
+		if (portalFailed || params.renderBufferHandler == null || params.exactCameraPosition == null) return;
+		try
+		{
+			long now = System.currentTimeMillis();
+			// start refreshes where needed
+			for (PortalPano p : portalPanos)
+			{
+				if (p == null || p.key == Integer.MIN_VALUE || p.nextFace >= 0) continue;
+				if (now - p.lastRequestMs > PORTAL_IDLE_MS) continue; // not wanted now: no work
+				double[] c = p.centers[p.front];
+				double dx = p.want[0] - c[0], dy = p.want[1] - c[1], dz = p.want[2] - c[2];
+				double threshold = Math.max(8.0, p.wantStart / 8.0);
+				boolean moved = dx * dx + dz * dz > threshold * threshold || Math.abs(dy) > VERTICAL_THRESHOLD;
+				if (!p.valid || moved || now - p.refreshStartMs > MAX_AGE_MS
+					|| p.wantStart != p.builtStart || p.wantSize != p.builtSize)
+				{
+					int back = 1 - p.front;
+					p.centers[back][0] = p.want[0];
+					p.centers[back][1] = p.want[1];
+					p.centers[back][2] = p.want[2];
+					p.nextFace = 0;
+					p.refreshStartMs = now;
+					p.builtStart = p.wantStart;
+					p.builtSize = p.wantSize;
+				}
+			}
+			// build one face per frame, round-robin over the panoramas being refreshed
+			for (int i = 0; i < MAX_PORTAL_PANOS; i++)
+			{
+				PortalPano p = portalPanos[(portalRoundRobin + i) % MAX_PORTAL_PANOS];
+				if (p == null || p.nextFace < 0) continue;
+				portalRoundRobin = (portalRoundRobin + i + 1) % MAX_PORTAL_PANOS;
+				int back = 1 - p.front;
+				DhGpuTimer.mark("Portal panorama face");
+				renderFaceInto(params, p.colors[back][p.nextFace], p.depths[back][p.nextFace], p.centers[back],
+					p.nextFace, p.builtStart, p.builtSize, p.viewProj[back][p.nextFace], p.invViewProj[back][p.nextFace]);
+				portalFacesThisSecond++;
+				p.nextFace++;
+				if (p.nextFace >= FACES)
+				{
+					p.front = back;
+					p.valid = true;
+					p.nextFace = -1;
+				}
+				break;
+			}
+			if (now - portalSecondStart >= 1000)
+			{
+				portalSecondStart = now;
+				shownPortalFaces = portalFacesThisSecond;
+				portalFacesThisSecond = 0;
+			}
+		}
+		catch (Throwable t)
+		{
+			portalFailed = true;
+			currentFace = null;
+			System.err.println("[Quasar Horizons] portal panoramas disabled after an error: " + t);
+			t.printStackTrace();
+		}
+	}
+	
+	/** F3: portal panoramas in use and faces built per second. */
+	public static String getPortalF3Line()
+	{
+		if (portalFailed) return "Portal panoramas: disabled after an error (see log)";
+		long now = System.currentTimeMillis();
+		int active = 0, ready = 0;
+		for (PortalPano p : portalPanos)
+		{
+			if (p == null || p.key == Integer.MIN_VALUE || now - p.lastRequestMs > PORTAL_IDLE_MS) continue;
+			active++;
+			if (p.valid) ready++;
+		}
+		if (active == 0) return "Portal panoramas: idle";
+		return String.format(Locale.ROOT, "Portal panoramas: %d (%d ready), %d faces/s", active, ready, shownPortalFaces);
 	}
 	
 	

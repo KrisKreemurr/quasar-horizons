@@ -169,6 +169,7 @@ public final class DhGpuTimer
 			return lines;
 		}
 		lines.add(QuasarPanorama.getF3Line());
+		lines.add(QuasarPanorama.getPortalF3Line());
 		lines.add(String.format(Locale.ROOT, "Quasar Horizons GPU: %.2f ms total", smoothedTotalMs));
 		for (Map.Entry<String, Double> e : smoothedMs.entrySet())
 		{
